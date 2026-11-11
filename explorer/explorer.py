@@ -26,6 +26,15 @@ FREQ = {'Mensal':'MS', 'Semestral':'6MS'}
 # Caminho do arquivo relatório
 REPORT_PATH = Path('report.md')
 
+# Formato esperado de meses do ano
+MONTHS = 'Janeiro|Fevereiro|Março|Abril|Maio|Junho|Julho|Agosto|Setembro|Outubro|Novembro|Dezembro'
+
+# Padrões estritos esperados nos nomes dos arquivos
+STRICT_PATTERNS = [
+    r'^[12]º semestre de \d{4}\.csv$',
+    rf'^({MONTHS}) de \d{{4}}\.csv$'
+]
+
 # endregion
 
 # region Inventário
@@ -148,23 +157,8 @@ def build_inventory(path):
 
     return pd.DataFrame(info_list)
 
-def header_section() -> str:
-    lines = [
-        '# Exploração dos dados brutos da ANP',
-        '',
-        'Relatório gerado por `explorer.py` a partir dos arquivos em `raw/`, '
-        'baixados pelo coletor da série histórica de preços de combustíveis da ANP.',
-        '',
-        'O objetivo da exploração é entender a fonte antes de escrever o pipeline: '
-        '',
-        'o que existe, em que formato e com que qualidade. '
-        '',
-        'Para gerar o relatório novamente: `python explorer.py`.',
-    ]
-
-    return '\n'.join(lines)
-
 def inventory_section(inventory:pd.DataFrame) -> str:
+    """Monta a seção de inventário no relatório de resultados."""
 
     total_files = len(inventory)
     total_size = utils.format_mb(inventory['tamanho'].sum())
@@ -176,10 +170,12 @@ def inventory_section(inventory:pd.DataFrame) -> str:
         ultimo=('fim', 'max'),
     )
 
+    # Formata o sumário para exibição
     summary['tamanho'] = summary['tamanho'].map(utils.format_mb)
     summary['primeiro'] = summary['primeiro'].dt.strftime('%Y-%m-%d')
     summary['ultimo'] = summary['ultimo'].dt.strftime('%Y-%m-%d')
 
+    # Quantidade de tipos de período por categoria
     type_category = pd.crosstab(inventory['categoria'], inventory['periodo'])
 
     lines = [
@@ -258,6 +254,7 @@ def identify_gaps(inventory: pd.DataFrame) -> pd.DataFrame:
     return pd.DataFrame(gaps_list)
 
 def gaps_section(gaps:pd.DataFrame) -> str:
+    """Monta a seção de lacunas no relatório de resultados."""
 
     gaps_quantity = gaps['faltando'].str.len().sum()
 
@@ -280,17 +277,97 @@ def gaps_section(gaps:pd.DataFrame) -> str:
 
 # endregion
 
+# region Inconsistência dos nomes
+
+def find_names_inconsistencies(inventory:pd.DataFrame) -> pd.DataFrame:
+    """Encontra inconsistências nos nomes dos arquivos do inventário
+    
+    Compara o nome do arquivo com o padrão estrito esperado em STRICT_PATTERNS.
+    Encontra caracteres fora do padrão, mesmo que visualmente sejam iguais
+
+    Args:
+        inventory: DataFrame do inventário gerado em build_inventory
+    
+    Returns:
+        DataFrame com os arquivos de nome fora do padrão esperado. Colunas:
+            categoria: A categoria do arquivo encontrado
+            arquivo: O nome do arquivo
+    """
+
+    # Lista para montar o DataFrame com os arquivos de nome inconsistente
+    lines = []
+
+    # Percorre cada linha do DataFrame
+    for row in inventory.itertuples():
+
+        # Se não estiver dentro do padrão esperado
+        if not any(re.match(pattern, row.arquivo) for pattern in STRICT_PATTERNS):
+
+            lines.append(
+                {
+                    "categoria":row.categoria,
+                    "arquivo":row.arquivo
+                }
+            )
+
+    return pd.DataFrame(lines)
+
+def names_section(names_inconsistencies: pd.DataFrame) -> str:
+    """Monta a seção do relatório com a verificação dos nomes dos arquivos."""
+
+    lines = [
+        '## Verificação dos nomes dos arquivos',
+        '',
+        'Cada nome de arquivo foi comparado com o formato exato esperado: '
+        '`1º semestre de 2004.csv` para os semestrais e `Abril de 2023.csv` para os mensais. '
+        'O objetivo é encontrar nomes que parecem iguais, mas usam caracteres diferentes.',
+        '',
+    ]
+
+    if names_inconsistencies.empty:
+        lines.append('Todos os nomes seguem o formato esperado.')
+    else:
+        lines.append(f'Arquivos fora do formato: {len(names_inconsistencies)}')
+        lines.append('')
+        lines.append(names_inconsistencies.to_markdown(index=False))
+        lines.append('')
+        lines.append(
+            'Na análise feita, o caso encontrado é o uso do símbolo de grau (°) no lugar '
+            'do indicador ordinal (º). Os dois são visualmente iguais, mas são caracteres '
+            'diferentes. A extração do período não é afetada, porque o padrão usado no '
+            'inventário aceita qualquer símbolo entre o número e a palavra "semestre".'
+        )
+
+    return '\n'.join(lines)
+
+# endregion
+
 # region Relatório
 
+def header_section() -> str:
+    """Monta a seção de cabeçalho do relatório de resultados."""
+
+    lines = [
+        '# Exploração dos dados brutos da ANP',
+        '',
+        'Relatório gerado por `explorer.py` a partir dos arquivos em `raw/`, '
+        'baixados pelo coletor da série histórica de preços de combustíveis da ANP.',
+        '',
+        'O objetivo da exploração é entender a fonte antes de escrever o pipeline: '
+        'o que existe, em que formato e com que qualidade. ',
+        '',
+        'Para gerar o relatório novamente: `python explorer.py`.',
+    ]
+
+    return '\n'.join(lines)
+
 def write_report(sections:list[str], path:Path) -> None:
-    """Junta as seções e escreve o relatório em markdown
-    
+    """Junta as seções e escreve o relatório em markdown.
        
     Args:
         sections: Seções do relatório, já em markdown, 
         na ordem em que devem aparecer
         path: Arquivo de saída. É sobrescrito se já existir
-    
     """
 
     # Junta as seções, com uma linha em branco de espaço entre elas
@@ -306,11 +383,13 @@ def write_report(sections:list[str], path:Path) -> None:
 def main():
     inventory = build_inventory('raw')
     gaps = identify_gaps(inventory)
+    name_inconsistencies = find_names_inconsistencies(inventory)
 
     sections = [
         header_section(),
         inventory_section(inventory),
-        gaps_section(gaps)
+        gaps_section(gaps),
+        names_section(name_inconsistencies)
     ]
 
     write_report(sections, path=REPORT_PATH)

@@ -3,6 +3,7 @@
 Relatório gerado por `explorer.py` a partir dos arquivos em `raw/`, baixados pelo coletor da série histórica de preços de combustíveis da ANP.
 
 O objetivo da exploração é entender a fonte antes de escrever o pipeline: o que existe, em que formato e com que qualidade. 
+
 Para gerar o relatório novamente: `python explorer.py`.
 
 ## Inventário
@@ -48,3 +49,15 @@ Nenhuma lacuna encontrada: todas as categorias têm a sequência completa entre 
 | Etanol Hidratado + Gasolina C    | []         |
 | GLP P13                          | []         |
 | Óleo Diesel (S-500 e S-10) + GNV | []         |
+
+## Verificação dos nomes dos arquivos
+
+Cada nome de arquivo foi comparado com o formato exato esperado: `1º semestre de 2004.csv` para os semestrais e `Abril de 2023.csv` para os mensais. O objetivo é encontrar nomes que parecem iguais, mas usam caracteres diferentes.
+
+Arquivos fora do formato: 1
+
+| categoria                | arquivo                 |
+|:-------------------------|:------------------------|
+| Combustíveis automotivos | 2° semestre de 2023.csv |
+
+Na análise feita, o caso encontrado é o uso do símbolo de grau (°) no lugar do indicador ordinal (º). Os dois são visualmente iguais, mas são caracteres diferentes. A extração do período não é afetada, porque o padrão usado no inventário aceita qualquer símbolo entre o número e a palavra "semestre".
