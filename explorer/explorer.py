@@ -54,6 +54,7 @@ def build_inventory(path):
         DataFrame do pandas com as colunas:
             'categoria': Nome da subpasta onde o arquivo está
             'arquivo': Nome do arquivo
+            'caminho': Caminho completo do arquivo
             'tamanho': Tamanho do arquivo em MB
             'periodo': Tipo do período
             'inicio': Data de início
@@ -148,6 +149,7 @@ def build_inventory(path):
             {
                 'categoria':category,
                 'arquivo':archive_name,
+                'caminho':csv,
                 'tamanho':archive_size,
                 'periodo': period,
                 'inicio':start_period,
@@ -206,10 +208,6 @@ def inventory_section(inventory:pd.DataFrame) -> str:
     ]
 
     return '\n'.join(lines)
-
-# endregion
-
-# region Lacunas
 
 def identify_gaps(inventory: pd.DataFrame) -> pd.DataFrame:
     """Identifica lacunas no inventário.
@@ -275,10 +273,6 @@ def gaps_section(gaps:pd.DataFrame) -> str:
 
     return '\n'.join(lines)
 
-# endregion
-
-# region Inconsistência dos nomes
-
 def find_names_inconsistencies(inventory:pd.DataFrame) -> pd.DataFrame:
     """Encontra inconsistências nos nomes dos arquivos do inventário
     
@@ -342,6 +336,85 @@ def names_section(names_inconsistencies: pd.DataFrame) -> str:
 
 # endregion
 
+# region Formato físico
+
+def check_delimiter(inventory:pd.DataFrame) -> pd.DataFrame:
+    """Cria um DataFrame com a relação arquivo e delimitador.
+
+    Detecta o delimitador de cada arquivo do inventário.    
+    
+    Args:
+        inventory: DataFrame do inventário de arquivos (precisa da coluna 'caminho')
+    
+    Returns:
+        DataFrame com as colunas:
+            'categoria': Categoria do arquivo.
+            'arquivo': Nome do arquivo.
+            'delimitador': Delimitador usado pelo arquivo. Ou None caso não tenha sido possível decidir
+    """
+
+    # Cria um DataFrame result que copia duas colunas do inventory
+    result = inventory[['categoria', 'arquivo']].copy()
+
+    # Cria no result a coluna delimitador e encontra o delimitador para cada linha passando o caminho correspondente.
+    result['delimitador'] = inventory['caminho'].map(utils.find_delimiter)
+
+    return result
+
+def delimiter_section(delimiters:pd.DataFrame) -> str:
+    """Monta a seção dos delimitadores para o relatório.
+    
+    Mostra uma tabela com a contagem de arquivos por categoria e delimitador.
+    Se houver mais de um delimitador, lista os arquivos que não usam o predominante.
+    
+    Args:
+        delimiters: O DataFrame com os delimitadores identificados por arquivo
+    
+    Returns:
+        A string da seção para o relatório
+    """
+    
+    summary = pd.crosstab(
+        delimiters['categoria'],
+
+        # Substitui o None por 'não detectado'
+        delimiters['delimitador'].fillna('não detectado'),
+
+        # Adiciona uma linha e uma coluna com a soma
+        margins=True,
+
+        # Nome dessa linha e dessa coluna
+        margins_name='total'
+    )
+
+    # Lista de textos para o relatório
+    lines = [
+        '## Formato físico',
+        '',
+        '### Delimitador',
+        '',
+        summary.to_markdown(),
+    ]
+
+    # Se houver mais de um valor diferente
+    if delimiters['delimitador'].nunique(dropna=False) > 1:
+
+        # Encontra o delimitador principal
+        main_delim = delimiters['delimitador'].mode()[0]
+
+        # Separa as exceções
+        exceptions = delimiters[delimiters['delimitador'] != main_delim]
+
+        # Adiciona à lista de textos
+        lines += ['', 'Arquivos fora do delimitador predominante: ', 
+                  '',
+                  exceptions.to_markdown(index= False)
+                ]
+
+    return '\n'.join(lines)
+
+# endregion
+
 # region Relatório
 
 def header_section() -> str:
@@ -384,12 +457,14 @@ def main():
     inventory = build_inventory('raw')
     gaps = identify_gaps(inventory)
     name_inconsistencies = find_names_inconsistencies(inventory)
+    delimiters = check_delimiter(inventory)
 
     sections = [
         header_section(),
         inventory_section(inventory),
         gaps_section(gaps),
-        names_section(name_inconsistencies)
+        names_section(name_inconsistencies),
+        delimiter_section(delimiters)
     ]
 
     write_report(sections, path=REPORT_PATH)

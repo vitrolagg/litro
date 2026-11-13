@@ -61,3 +61,15 @@ Arquivos fora do formato: 1
 | Combustíveis automotivos | 2° semestre de 2023.csv |
 
 Na análise feita, o caso encontrado é o uso do símbolo de grau (°) no lugar do indicador ordinal (º). Os dois são visualmente iguais, mas são caracteres diferentes. A extração do período não é afetada, porque o padrão usado no inventário aceita qualquer símbolo entre o número e a palavra "semestre".
+
+## Formato físico
+
+### Delimitador
+
+| categoria                        |   ; |   total |
+|:---------------------------------|----:|--------:|
+| Combustíveis automotivos         |  45 |      45 |
+| Etanol Hidratado + Gasolina C    |  46 |      46 |
+| GLP P13                          |  45 |      45 |
+| Óleo Diesel (S-500 e S-10) + GNV |  46 |      46 |
+| total                            | 182 |     182 |
