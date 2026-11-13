@@ -413,6 +413,76 @@ def delimiter_section(delimiters:pd.DataFrame) -> str:
 
     return '\n'.join(lines)
 
+def check_headers(inventory:pd.DataFrame) -> pd.DataFrame:
+    """Cria um DataFrame com o cabeçalho de cada arquivo.
+    
+    Args:
+        inventory: Inventário de arquivos
+    
+    Returns:
+        DataFrame com o cabeçalho dos arquivos. Colunas:
+            'categoria': Categoria do arquivo.
+            'arquivo': Nome do arquivo.
+            'cabecalho': Cabeçalho do arquivo.
+            'inicio': Data de inicio da cobertura do arquivo.
+    """
+    
+
+    # Copia as colunas 'categoria' e 'arquivo' para o DataFrame result
+    result = inventory[['categoria','arquivo', 'inicio']].copy()
+
+    # Cria a coluna 'cabecalho' e preenche usando a função read_header
+    result['cabecalho'] = inventory['caminho'].map(utils.read_header)
+
+    return result
+
+def archive_header_section(headers:pd.DataFrame) -> str:
+    """Monta a seção de verificação dos cabeçalhos no relatório.
+
+    Se todos os arquivos tiverem o mesmo cabeçalho, lista as colunas.
+    Se houver mais de um padrão, mostra uma tabela com cada padrão.
+
+    Args:
+        headers: DataFrame gerado por check_headers
+
+    Returns:
+        A string da seção para o relatório
+    """
+
+    # Agrupa os arquivos pelo cabeçalho. A coluna 'cabecalho' vira o índice
+    patterns = headers.groupby('cabecalho').agg(
+        arquivos = ('arquivo', 'count'),
+        primeiro= ('inicio', 'min'),
+        ultimo=('inicio', 'max')
+    )
+
+    # Lista de textos para o relatório
+    lines = [
+        '### Cabeçalho',
+        '',
+    ]
+
+    # Se existe um único padrão de cabeçalho
+    if len(patterns) == 1:
+
+        # Pega a tupla do único padrão, que está no índice
+        columns = patterns.index[0]
+
+        lines.append(f'Todos os {len(headers)} arquivos têm o mesmo cabeçalho, '
+                     f'com {len(columns)} colunas na mesma ordem:')
+        lines.append('')
+
+        # Uma linha de lista numerada para cada coluna
+        for number, name in enumerate(columns, start=1):
+            lines.append(f'{number}. `{name}`')
+
+    else:
+        lines.append(f'Foram encontrados {len(patterns)} cabeçalhos diferentes.')
+        lines.append('')
+        lines.append(patterns.reset_index(drop=True).to_markdown())
+
+    return '\n'.join(lines)
+
 # endregion
 
 # region Relatório
@@ -457,14 +527,17 @@ def main():
     inventory = build_inventory('raw')
     gaps = identify_gaps(inventory)
     name_inconsistencies = find_names_inconsistencies(inventory)
+    
     delimiters = check_delimiter(inventory)
+    headers = check_headers(inventory)
 
     sections = [
         header_section(),
         inventory_section(inventory),
         gaps_section(gaps),
         names_section(name_inconsistencies),
-        delimiter_section(delimiters)
+        delimiter_section(delimiters),
+        archive_header_section(headers)
     ]
 
     write_report(sections, path=REPORT_PATH)

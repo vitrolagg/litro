@@ -73,3 +73,24 @@ Na análise feita, o caso encontrado é o uso do símbolo de grau (°) no lugar 
 | GLP P13                          |  45 |      45 |
 | Óleo Diesel (S-500 e S-10) + GNV |  46 |      46 |
 | total                            | 182 |     182 |
+
+### Cabeçalho
+
+Todos os 182 arquivos têm o mesmo cabeçalho, com 16 colunas na mesma ordem:
+
+1. `Regiao - Sigla`
+2. `Estado - Sigla`
+3. `Municipio`
+4. `Revenda`
+5. `CNPJ da Revenda`
+6. `Nome da Rua`
+7. `Numero Rua`
+8. `Complemento`
+9. `Bairro`
+10. `Cep`
+11. `Produto`
+12. `Data da Coleta`
+13. `Valor de Venda`
+14. `Valor de Compra`
+15. `Unidade de Medida`
+16. `Bandeira`

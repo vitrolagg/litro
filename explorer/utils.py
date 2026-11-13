@@ -48,3 +48,15 @@ def find_delimiter(path, sample_size= 64 * 1024) -> str | None:
 
         # Não conseguiu decidir
         return None
+
+def read_header(path) -> tuple[str, ...]:
+    """Lê a primeira linha do arquivo e devolve os nomes das colunas."""
+
+    # Abre o arquivo no caminho recebido
+    with open(path, encoding='utf-8', newline='') as f:
+
+        # Como o único delimitador encontrado durante a exploração foi ';', ele foi escolhido como padrão
+        reader = csv.reader(f, delimiter=';')
+
+        # Retorna uma tupla contendo apenas a primeira linha. Cada item é o cabeçalho de uma coluna
+        return tuple(next(reader))
