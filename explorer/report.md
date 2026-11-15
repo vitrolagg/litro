@@ -94,3 +94,30 @@ Todos os 182 arquivos têm o mesmo cabeçalho, com 16 colunas na mesma ordem:
 14. `Valor de Compra`
 15. `Unidade de Medida`
 16. `Bandeira`
+
+## Leitura completa
+
+Cada arquivo foi lido inteiro com a regra de leitura definida no formato físico (`sep=';'`, `encoding='utf-8'`, todas as colunas como texto), registrando o número de linhas, o tempo de leitura e a memória ocupada pelo DataFrame. O objetivo é confirmar que a regra funciona para todos os arquivos e conhecer o tamanho real dos dados.
+
+Os 182 arquivos foram lidos sem erro: a regra de leitura funciona para todos.
+
+### Tamanho dos dados
+
+`memoria` é a memória que os arquivos ocupam depois de lidos pelo pandas e `segundos` é o tempo de leitura. Os totais somam todos os arquivos da categoria.
+
+| categoria                        |   arquivos |   linhas | memoria   |   segundos |
+|:---------------------------------|-----------:|---------:|:----------|-----------:|
+| Combustíveis automotivos         |         45 | 25464380 | 21.85 GB  |       58.6 |
+| Etanol Hidratado + Gasolina C    |         46 |  2269530 | 1.92 GB   |        6   |
+| GLP P13                          |         45 |  6345989 | 5.37 GB   |       20.8 |
+| Óleo Diesel (S-500 e S-10) + GNV |         46 |  1054801 | 914.00 MB |        3   |
+| total                            |        182 | 35134700 | 30.04 GB  |       88.4 |
+
+- Total de linhas: 35.134.700
+- Tempo total de leitura: 88.4 segundos
+- Em memória, cada arquivo ocupa em média 5.4 vezes o seu tamanho em disco (de 5.2 a 5.8 vezes).
+- Maior arquivo em memória: `2º semestre de 2004.csv` (Combustíveis automotivos), com 150.79 MB em disco e 810.24 MB em memória.
+
+Carregar o histórico inteiro de uma vez ocuparia cerca de 30.04 GB de memória, enquanto o maior arquivo sozinho ocupa 810.24 MB. Por isso a leitura, aqui e no pipeline da Fase 1, é feita um arquivo por vez.
+
+Limitação: uma linha com campos a mais faz a leitura do arquivo falhar, e o arquivo apareceria na lista de falhas. Uma linha com campos a menos não gera erro: o pandas completa os campos que faltam com nulos. Esses casos aparecem na análise de nulos.

@@ -485,6 +485,126 @@ def archive_header_section(headers:pd.DataFrame) -> str:
 
 # endregion
 
+# region Leitura completa
+
+def check_reading(inventory:pd.DataFrame) -> pd.DataFrame:
+
+    rows = []
+    for row in inventory.itertuples():
+
+        # Obtém as estatísticas para o arquivo da linha atual
+        stats = utils.read_file_stats(row.caminho)
+
+        # Obtém categoria
+        stats['categoria'] = row.categoria
+
+        # Obtém nome do arquivo
+        stats['arquivo'] = row.arquivo
+
+        # Tamanho em disco, para comparar com a memória ocupada
+        stats['tamanho'] = row.tamanho
+
+        # Adiciona à lista
+        rows.append(stats)
+
+    return pd.DataFrame(rows, columns=['categoria', 'arquivo', 'tamanho', 'linhas', 'segundos', 'memoria_mb', 'erro'])
+
+def reading_section(reading:pd.DataFrame) -> str:
+    """Monta a seção de leitura completa do relatório.
+
+    Mostra os totais de linhas, memória e tempo por categoria e no geral,
+    os arquivos que falharam na leitura e a relação entre memória e tamanho em disco.
+
+    Args:
+        reading: DataFrame gerado por check_reading
+
+    Returns:
+        A string da seção para o relatório
+    """
+
+    # Arquivos em que a leitura falhou
+    failures = reading[reading['erro'].notna()]
+
+    # Totais por categoria. O sum ignora os valores vazios dos arquivos que falharam
+    summary = reading.groupby('categoria').agg(
+        arquivos=('arquivo', 'count'),
+        linhas=('linhas', 'sum'),
+        memoria=('memoria_mb', 'sum'),
+        segundos=('segundos', 'sum'),
+    )
+
+    # Linha com o total geral, somando as categorias
+    summary.loc['total'] = summary.sum()
+
+    # Guarda os totais gerais antes de formatar a tabela
+    total_lines = int(summary.loc['total', 'linhas'])
+    total_memory = summary.loc['total', 'memoria']
+    total_seconds = summary.loc['total', 'segundos']
+
+    # Formata a tabela para exibição
+    summary['arquivos'] = summary['arquivos'].astype(int)
+    summary['linhas'] = summary['linhas'].astype(int)
+    summary['memoria'] = summary['memoria'].map(utils.format_mb)
+    summary['segundos'] = summary['segundos'].round(1)
+
+    # Quantas vezes o DataFrame é maior que o arquivo em disco
+    ratio = reading['memoria_mb'] / reading['tamanho']
+
+    # Arquivo que ocupou mais memória
+    largest = reading.loc[reading['memoria_mb'].idxmax()]
+
+    lines = [
+        '## Leitura completa',
+        '',
+        'Cada arquivo foi lido inteiro com a regra de leitura definida no formato físico '
+        "(`sep=';'`, `encoding='utf-8'`, todas as colunas como texto), registrando o número "
+        'de linhas, o tempo de leitura e a memória ocupada pelo DataFrame. O objetivo é '
+        'confirmar que a regra funciona para todos os arquivos e conhecer o tamanho real dos dados.',
+        '',
+    ]
+
+    # Resultado da leitura: todos leram ou lista dos que falharam
+    if failures.empty:
+        lines.append(f'Os {len(reading)} arquivos foram lidos sem erro: a regra de leitura funciona para todos.')
+    else:
+        lines.append(f'Arquivos que falharam na leitura: {len(failures)} de {len(reading)}')
+        lines.append('')
+
+        # Tira a quebra de linha que o pandas coloca no fim da mensagem de erro
+        failures_table = failures[['categoria', 'arquivo', 'erro']].copy()
+        failures_table['erro'] = failures_table['erro'].str.strip()
+
+        lines.append(failures_table.to_markdown(index=False))
+
+    lines += [
+        '',
+        '### Tamanho dos dados',
+        '',
+        '`memoria` é a memória que os arquivos ocupam depois de lidos pelo pandas e '
+        '`segundos` é o tempo de leitura. Os totais somam todos os arquivos da categoria.',
+        '',
+        summary.to_markdown(),
+        '',
+        f'- Total de linhas: {total_lines:,}'.replace(',', '.'),
+        f'- Tempo total de leitura: {total_seconds:.1f} segundos',
+        f'- Em memória, cada arquivo ocupa em média {ratio.mean():.1f} vezes o seu tamanho em disco '
+        f'(de {ratio.min():.1f} a {ratio.max():.1f} vezes).',
+        f'- Maior arquivo em memória: `{largest["arquivo"]}` ({largest["categoria"]}), '
+        f'com {utils.format_mb(largest["tamanho"])} em disco e {utils.format_mb(largest["memoria_mb"])} em memória.',
+        '',
+        f'Carregar o histórico inteiro de uma vez ocuparia cerca de {utils.format_mb(total_memory)} de memória, '
+        f'enquanto o maior arquivo sozinho ocupa {utils.format_mb(largest["memoria_mb"])}. Por isso a leitura, '
+        'aqui e no pipeline da Fase 1, é feita um arquivo por vez.',
+        '',
+        'Limitação: uma linha com campos a mais faz a leitura do arquivo falhar, e o arquivo '
+        'apareceria na lista de falhas. Uma linha com campos a menos não gera erro: o pandas '
+        'completa os campos que faltam com nulos. Esses casos aparecem na análise de nulos.',
+    ]
+
+    return '\n'.join(lines)
+
+# endregion
+
 # region Relatório
 
 def header_section() -> str:
@@ -531,13 +651,16 @@ def main():
     delimiters = check_delimiter(inventory)
     headers = check_headers(inventory)
 
+    reading = check_reading(inventory)
+
     sections = [
         header_section(),
         inventory_section(inventory),
         gaps_section(gaps),
         names_section(name_inconsistencies),
         delimiter_section(delimiters),
-        archive_header_section(headers)
+        archive_header_section(headers),
+        reading_section(reading),
     ]
 
     write_report(sections, path=REPORT_PATH)
