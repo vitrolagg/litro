@@ -194,7 +194,7 @@ def inventory_section(inventory:pd.DataFrame) -> str:
         '',
         '`primeiro` é o início do período mais antigo e `ultimo` é o fim do mais recente. '
         'As datas são o período que o nome do arquivo **declara** cobrir; a comparação '
-        'com as datas reais de coleta fica para a etapa de anomalias. '
+        'com as datas reais de coleta fica para as validações de qualidade da Fase 2. '
         'Os tamanhos usam base binária (1 MB = 1024² bytes).',
         '',
         summary.to_markdown(),
@@ -256,6 +256,16 @@ def gaps_section(gaps:pd.DataFrame) -> str:
 
     gaps_quantity = gaps['faltando'].str.len().sum()
 
+    # Só as categorias que têm lacunas
+    gaps_table = gaps[gaps['faltando'].str.len() > 0].copy()
+
+    # Troca a lista de Timestamps por um texto com as datas no formato ano-mês.
+    gaps_table['faltando'] = gaps_table['faltando'].map(
+    
+        # Para cada lista, formata cada data e junta tudo separado por vírgula
+        lambda dates: ', '.join(date.strftime('%Y-%m') for date in dates)
+    )
+
     lines = [
         '## Verificação de lacunas',
         '',
@@ -266,10 +276,15 @@ def gaps_section(gaps:pd.DataFrame) -> str:
         'Limitações: as pontas não são verificadas (se faltar o primeiro ou o último '
         'arquivo, a lacuna não aparece) e períodos repetidos não são detectados.',
         '',
-        f'Lacunas encontradas: {gaps_quantity}' if gaps_quantity > 0 else 'Nenhuma lacuna encontrada: todas as categorias têm a sequência completa entre o primeiro e o último período.',
-        '',
-        gaps.to_markdown(index=False),
     ]
+
+    if gaps_quantity > 0:
+        lines.append(f'Lacunas encontradas: {gaps_quantity}')
+        lines.append('')
+        lines.append(gaps_table.to_markdown(index=False))
+    else:
+        lines.append('Nenhuma lacuna encontrada: todas as categorias têm a sequência '
+                     'completa entre o primeiro e o último período.')
 
     return '\n'.join(lines)
 
@@ -324,13 +339,19 @@ def names_section(names_inconsistencies: pd.DataFrame) -> str:
         lines.append(f'Arquivos fora do formato: {len(names_inconsistencies)}')
         lines.append('')
         lines.append(names_inconsistencies.to_markdown(index=False))
-        lines.append('')
-        lines.append(
-            'Na análise feita, o caso encontrado é o uso do símbolo de grau (°) no lugar '
-            'do indicador ordinal (º). Os dois são visualmente iguais, mas são caracteres '
-            'diferentes. A extração do período não é afetada, porque o padrão usado no '
-            'inventário aceita qualquer símbolo entre o número e a palavra "semestre".'
-        )
+
+        # Quantos dos nomes fora do formato usam o símbolo de grau no lugar do ordinal
+        degree_count = names_inconsistencies['arquivo'].str.contains('°').sum()
+
+        # Só explica o caso do símbolo de grau se ele realmente aparecer
+        if degree_count > 0:
+            lines.append('')
+            lines.append(
+                f'Arquivos que usam o símbolo de grau (°) no lugar do indicador ordinal (º): '
+                f'{degree_count}. Os dois são visualmente iguais, mas são caracteres '
+                'diferentes. A extração do período não é afetada, porque o padrão usado no '
+                'inventário aceita qualquer símbolo entre o número e a palavra "semestre".'
+            )
 
     return '\n'.join(lines)
 
@@ -479,7 +500,20 @@ def archive_header_section(headers:pd.DataFrame) -> str:
     else:
         lines.append(f'Foram encontrados {len(patterns)} cabeçalhos diferentes.')
         lines.append('')
-        lines.append(patterns.reset_index(drop=True).to_markdown())
+
+        # Traz o cabeçalho do índice de volta para uma coluna, para ele aparecer na tabela
+        table = patterns.reset_index()
+
+        # Formata as datas e transforma a tupla de colunas em texto
+        table['colunas'] = table['cabecalho'].str.len()
+        table['primeiro'] = table['primeiro'].dt.strftime('%Y-%m')
+        table['ultimo'] = table['ultimo'].dt.strftime('%Y-%m')
+        table['cabecalho'] = table['cabecalho'].map(', '.join)
+
+        # O cabeçalho vai por último porque é a coluna mais longa
+        table = table[['arquivos', 'primeiro', 'ultimo', 'colunas', 'cabecalho']]
+
+        lines.append(table.to_markdown(index=False))
 
     return '\n'.join(lines)
 
@@ -490,10 +524,19 @@ def archive_header_section(headers:pd.DataFrame) -> str:
 def check_reading(inventory:pd.DataFrame) -> pd.DataFrame:
 
     rows = []
-    for row in inventory.itertuples():
+
+    # Total de arquivos, para mostrar o progresso
+    total = len(inventory)
+
+    # enumerate numera as voltas do loop a partir de 1, para o print do progresso
+    for number, row in enumerate(inventory.itertuples(), start=1):
 
         # Obtém as estatísticas para o arquivo da linha atual
         stats = utils.read_file_stats(row.caminho)
+
+        # Mostra o progresso: o tempo de leitura ou o erro, se a leitura falhou
+        result = 'ERRO' if stats['erro'] is not None else f'{stats["segundos"]:.2f} s'
+        print(f'    [{number}/{total}] {row.categoria} / {row.arquivo}: {result}')
 
         # Obtém categoria
         stats['categoria'] = row.categoria
@@ -644,15 +687,26 @@ def write_report(sections:list[str], path:Path) -> None:
 # region Função principal
 
 def main():
+    print('Montando o inventário...')
     inventory = build_inventory('raw')
+    print(f'    {len(inventory)} arquivos encontrados')
+
+    print('Verificando lacunas...')
     gaps = identify_gaps(inventory)
+
+    print('Verificando os nomes dos arquivos...')
     name_inconsistencies = find_names_inconsistencies(inventory)
-    
+
+    print('Detectando os delimitadores...')
     delimiters = check_delimiter(inventory)
+
+    print('Lendo os cabeçalhos...')
     headers = check_headers(inventory)
 
+    print('Lendo todos os arquivos inteiros (leva cerca de 1,5 minuto)...')
     reading = check_reading(inventory)
 
+    print('Montando o relatório...')
     sections = [
         header_section(),
         inventory_section(inventory),
@@ -664,8 +718,9 @@ def main():
     ]
 
     write_report(sections, path=REPORT_PATH)
+    print(f'Relatório salvo em {REPORT_PATH}')
 
-# endregion 
+# endregion
 
 if __name__ == '__main__':
     main()
