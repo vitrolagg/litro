@@ -105,3 +105,31 @@ def read_file_stats(path) -> dict:
     rows = len(df)
 
     return {"segundos": seconds, "memoria_mb": memory_mb, "linhas": rows, "erro": None}
+
+def count_nulls(path) -> pd.Series:
+    """Conta os valores ausentes de cada coluna de um arquivo.
+
+    Conta como ausente o campo vazio e o campo que só tem espaços.
+    O read_csv já transforma o campo vazio em nulo, mas mantém o campo
+    só com espaços como texto, então ele é contado à parte.
+
+    Usa a mesma regra de leitura de read_file_stats. Não trata erros de
+    leitura, porque a leitura completa já confirmou que todos os arquivos leem.
+
+    Args:
+        path: Caminho para o arquivo
+
+    Returns:
+        Series com o nome de cada coluna no índice e a quantidade de valores ausentes.
+    """
+
+    df = pd.read_csv(path, sep=';', dtype=str, encoding='utf-8')
+
+    # True onde o campo veio vazio (o read_csv transformou em nulo)
+    empty = df.isna()
+
+    # True onde o campo só tem espaços. isspace() é False para texto vazio, mas esse caso já está coberto pelo isna()
+    blank = df.apply(lambda column: column.str.isspace())
+
+    # Ausente é o campo vazio OU só com espaços. O sum conta os True de cada coluna
+    return (empty | blank).sum()

@@ -648,6 +648,102 @@ def reading_section(reading:pd.DataFrame) -> str:
 
 # endregion
 
+# region Perfil das colunas
+
+def check_nulls(inventory:pd.DataFrame) -> pd.DataFrame:
+    """Conta os valores ausentes de cada coluna, em cada arquivo.
+
+    Args:
+        inventory: Inventário de arquivos
+
+    Returns:
+        DataFrame com uma linha por arquivo. Colunas:
+            'categoria': Categoria do arquivo.
+            'arquivo': Nome do arquivo.
+            Uma coluna para cada coluna do CSV, com a quantidade de valores ausentes.
+    """
+
+    rows = []
+
+    # Total de arquivos, para mostrar o progresso
+    total = len(inventory)
+
+    for number, row in enumerate(inventory.itertuples(), start=1):
+
+        print(f'    [{number}/{total}] {row.categoria} / {row.arquivo}')
+
+        # Ausentes do arquivo, como dicionário: nome da coluna do CSV -> quantidade
+        nulls = utils.count_nulls(row.caminho).to_dict()
+
+        # Identifica de qual categoria e arquivo vieram as contagens
+        nulls['categoria'] = row.categoria
+        nulls['arquivo'] = row.arquivo
+
+        rows.append(nulls)
+
+    return pd.DataFrame(rows)
+
+def nulls_section(nulls:pd.DataFrame, reading:pd.DataFrame) -> str:
+    """Monta a seção do perfil das colunas no relatório.
+
+    Mostra a porcentagem de valores ausentes de cada coluna do CSV,
+    por categoria e no histórico inteiro.
+
+    Args:
+        nulls: DataFrame gerado por check_nulls
+        reading: DataFrame gerado por check_reading, de onde vem o total de linhas
+
+    Returns:
+        A string da seção para o relatório
+    """
+
+    # Colunas do CSV: todas, menos as que identificam o arquivo
+    csv_columns = nulls.columns.drop(['categoria', 'arquivo'])
+
+    # Ausentes por categoria: uma linha por categoria, uma coluna por coluna do CSV
+    nulls_by_category = nulls.groupby('categoria')[csv_columns].sum()
+
+    # Total de linhas de cada categoria, medido na leitura completa
+    rows_by_category = reading.groupby('categoria')['linhas'].sum()
+
+    # Porcentagem de ausentes. axis=0 divide cada linha (categoria) pelo total de linhas dela
+    percent = nulls_by_category.div(rows_by_category, axis=0) * 100
+
+    # Inverte a tabela: as colunas do CSV viram as linhas e as categorias viram as colunas
+    percent = percent.T
+    percent.index.name = 'coluna'
+
+    # Porcentagem no histórico inteiro, somando todas as categorias
+    percent['total'] = nulls_by_category.sum() / rows_by_category.sum() * 100
+
+    # Colunas sem nenhum valor ausente e colunas vazias em mais da metade das linhas
+    always_filled = [f'`{name}`' for name in percent.index[percent['total'] == 0]]
+    mostly_empty = [f'`{name}`' for name in percent.index[percent['total'] > 50]]
+
+    lines = [
+        '## Perfil das colunas',
+        '',
+        'Para cada coluna, foi contada a quantidade de valores ausentes em todos os arquivos. '
+        'Conta como ausente o campo vazio e o campo que só tem espaços: o pandas reconhece '
+        'só o primeiro como nulo, então o segundo foi contado à parte. O objetivo é decidir '
+        'quais colunas o pipeline da Fase 1 vai usar.',
+        '',
+        'Os valores são a porcentagem de linhas sem valor, por categoria e no histórico inteiro (`total`).',
+        '',
+        percent.to_markdown(floatfmt='.1f'),
+        '',
+        f'- Colunas sempre preenchidas: {", ".join(always_filled) or "nenhuma"}',
+        f'- Colunas vazias em mais da metade das linhas: {", ".join(mostly_empty) or "nenhuma"}',
+        '',
+        'Limitação: a porcentagem do histórico inteiro pode esconder uma coluna que só passou '
+        'a ser preenchida a partir de certo ano. A divisão por categoria mostra parte disso, '
+        'porque as categorias mensais só existem a partir de 2023.',
+    ]
+
+    return '\n'.join(lines)
+
+# endregion
+
 # region Relatório
 
 def header_section() -> str:
@@ -703,8 +799,11 @@ def main():
     print('Lendo os cabeçalhos...')
     headers = check_headers(inventory)
 
-    print('Lendo todos os arquivos inteiros (leva cerca de 1,5 minuto)...')
+    print('Lendo todos os arquivos inteiros...')
     reading = check_reading(inventory)
+
+    print('Contando os valores ausentes de cada coluna...')
+    nulls = check_nulls(inventory)
 
     print('Montando o relatório...')
     sections = [
@@ -715,6 +814,7 @@ def main():
         delimiter_section(delimiters),
         archive_header_section(headers),
         reading_section(reading),
+        nulls_section(nulls, reading),
     ]
 
     write_report(sections, path=REPORT_PATH)

@@ -100,17 +100,47 @@ Os 182 arquivos foram lidos sem erro: a regra de leitura funciona para todos.
 
 | categoria                        |   arquivos |   linhas | memoria   |   segundos |
 |:---------------------------------|-----------:|---------:|:----------|-----------:|
-| Combustíveis automotivos         |         45 | 25464380 | 21.85 GB  |       61.3 |
-| Etanol Hidratado + Gasolina C    |         46 |  2269530 | 1.92 GB   |        5.7 |
-| GLP P13                          |         45 |  6345989 | 5.37 GB   |       18.8 |
-| Óleo Diesel (S-500 e S-10) + GNV |         46 |  1054801 | 914.00 MB |        2.7 |
-| total                            |        182 | 35134700 | 30.04 GB  |       88.6 |
+| Combustíveis automotivos         |         45 | 25464380 | 21.85 GB  |       63.7 |
+| Etanol Hidratado + Gasolina C    |         46 |  2269530 | 1.92 GB   |        6.3 |
+| GLP P13                          |         45 |  6345989 | 5.37 GB   |       21.6 |
+| Óleo Diesel (S-500 e S-10) + GNV |         46 |  1054801 | 914.00 MB |        2.5 |
+| total                            |        182 | 35134700 | 30.04 GB  |       94.1 |
 
 - Total de linhas: 35.134.700
-- Tempo total de leitura: 88.6 segundos
+- Tempo total de leitura: 94.1 segundos
 - Em memória, cada arquivo ocupa em média 5.4 vezes o seu tamanho em disco (de 5.2 a 5.8 vezes).
 - Maior arquivo em memória: `2º semestre de 2004.csv` (Combustíveis automotivos), com 150.79 MB em disco e 810.24 MB em memória.
 
 Carregar o histórico inteiro de uma vez ocuparia cerca de 30.04 GB de memória, enquanto o maior arquivo sozinho ocupa 810.24 MB. Por isso a leitura, aqui e no pipeline da Fase 1, é feita um arquivo por vez.
 
 Limitação: uma linha com campos a mais faz a leitura do arquivo falhar, e o arquivo apareceria na lista de falhas. Uma linha com campos a menos não gera erro: o pandas completa os campos que faltam com nulos. Esses casos aparecem na análise de nulos.
+
+## Perfil das colunas
+
+Para cada coluna, foi contada a quantidade de valores ausentes em todos os arquivos. Conta como ausente o campo vazio e o campo que só tem espaços: o pandas reconhece só o primeiro como nulo, então o segundo foi contado à parte. O objetivo é decidir quais colunas o pipeline da Fase 1 vai usar.
+
+Os valores são a porcentagem de linhas sem valor, por categoria e no histórico inteiro (`total`).
+
+| coluna            |   Combustíveis automotivos |   Etanol Hidratado + Gasolina C |   GLP P13 |   Óleo Diesel (S-500 e S-10) + GNV |   total |
+|:------------------|---------------------------:|--------------------------------:|----------:|-----------------------------------:|--------:|
+| Regiao - Sigla    |                        0.0 |                             0.0 |       0.0 |                                0.1 |     0.0 |
+| Estado - Sigla    |                        0.0 |                             0.0 |       0.0 |                                0.1 |     0.0 |
+| Municipio         |                        0.0 |                             0.0 |       0.0 |                                0.1 |     0.0 |
+| Revenda           |                        0.0 |                             0.0 |       0.0 |                                0.1 |     0.0 |
+| CNPJ da Revenda   |                        0.0 |                             0.0 |       0.0 |                                0.1 |     0.0 |
+| Nome da Rua       |                        0.0 |                             0.0 |       0.0 |                                0.1 |     0.0 |
+| Numero Rua        |                        0.1 |                             0.0 |       0.0 |                                0.2 |     0.1 |
+| Complemento       |                       74.7 |                            78.0 |      80.0 |                               75.4 |    75.9 |
+| Bairro            |                        0.4 |                             0.2 |       1.9 |                                0.3 |     0.6 |
+| Cep               |                        0.0 |                             0.0 |       0.0 |                                0.1 |     0.0 |
+| Produto           |                        0.0 |                             0.0 |       0.0 |                                0.1 |     0.0 |
+| Data da Coleta    |                        0.0 |                             0.0 |       0.0 |                                0.1 |     0.0 |
+| Valor de Venda    |                        0.0 |                             0.0 |       0.0 |                                0.1 |     0.0 |
+| Valor de Compra   |                       58.8 |                           100.0 |      72.6 |                              100.0 |    65.2 |
+| Unidade de Medida |                        0.0 |                             0.0 |       0.0 |                                0.1 |     0.0 |
+| Bandeira          |                        0.0 |                             0.0 |       0.0 |                                0.1 |     0.0 |
+
+- Colunas sempre preenchidas: nenhuma
+- Colunas vazias em mais da metade das linhas: `Complemento`, `Valor de Compra`
+
+Limitação: a porcentagem do histórico inteiro pode esconder uma coluna que só passou a ser preenchida a partir de certo ano. A divisão por categoria mostra parte disso, porque as categorias mensais só existem a partir de 2023.
