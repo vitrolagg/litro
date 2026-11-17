@@ -35,6 +35,28 @@ STRICT_PATTERNS = [
     rf'^({MONTHS}) de \d{{4}}\.csv$'
 ]
 
+# Decisão sobre cada coluna do CSV no pipeline da Fase 1: (decisão, motivo).
+ADDRESS_REASON = 'Endereço do posto, para a tabela de postos'
+COLUMN_DECISIONS = {
+    'Regiao - Sigla': ('fica', 'Agrupa as médias por região'),
+    'Estado - Sigla': ('fica', 'Filtro por estado (ex.: estado com o etanol mais barato)'),
+    'Municipio': ('fica', 'Filtro por cidade (ex.: preço da gasolina em Goiânia)'),
+    'Revenda': ('fica', 'Nome do posto'),
+    'CNPJ da Revenda': ('fica', 'Identifica o posto e faz parte da chave do registro'),
+    'Nome da Rua': ('fica', ADDRESS_REASON),
+    'Numero Rua': ('fica', ADDRESS_REASON),
+    'Complemento': ('sai', 'Vazia na maior parte das linhas e sem uso nas consultas do projeto'),
+    'Bairro': ('fica', ADDRESS_REASON),
+    'Cep': ('fica', ADDRESS_REASON),
+    'Produto': ('fica', 'Todas as consultas filtram por produto'),
+    'Data da Coleta': ('fica', 'Base de toda análise no tempo'),
+    'Valor de Venda': ('fica', 'É o preço, o centro do projeto'),
+    'Valor de Compra': ('sai', 'Vazia na maior parte das linhas, e em todas as categorias mensais; '
+                               'nenhuma consulta do projeto usa'),
+    'Unidade de Medida': ('fica', 'Diferencia as unidades dos produtos (ex.: o GLP é vendido por botijão de 13 kg)'),
+    'Bandeira': ('fica', 'Permite comparar preços por bandeira do posto'),
+}
+
 # endregion
 
 # region Inventário
@@ -716,9 +738,23 @@ def nulls_section(nulls:pd.DataFrame, reading:pd.DataFrame) -> str:
     # Porcentagem no histórico inteiro, somando todas as categorias
     percent['total'] = nulls_by_category.sum() / rows_by_category.sum() * 100
 
-    # Colunas sem nenhum valor ausente e colunas vazias em mais da metade das linhas
-    always_filled = [f'`{name}`' for name in percent.index[percent['total'] == 0]]
+    # Colunas quase sempre preenchidas e colunas vazias em mais da metade das linhas
+    almost_filled = [f'`{name}`' for name in percent.index[percent['total'] < 1]]
     mostly_empty = [f'`{name}`' for name in percent.index[percent['total'] > 50]]
+
+    # Tabela de decisões, na mesma ordem das colunas do CSV
+    decision_rows = []
+    for name in percent.index:
+
+        # Coluna que não está em COLUMN_DECISIONS aparece como pendente
+        decision, reason = COLUMN_DECISIONS.get(name, ('sem decisão', ''))
+
+        decision_rows.append({'coluna': name, 'decisao': decision, 'motivo': reason})
+
+    decisions = pd.DataFrame(decision_rows)
+
+    # Colunas que o pipeline vai ler
+    kept = [f'`{name}`' for name in decisions.loc[decisions['decisao'] == 'fica', 'coluna']]
 
     lines = [
         '## Perfil das colunas',
@@ -732,12 +768,22 @@ def nulls_section(nulls:pd.DataFrame, reading:pd.DataFrame) -> str:
         '',
         percent.to_markdown(floatfmt='.1f'),
         '',
-        f'- Colunas sempre preenchidas: {", ".join(always_filled) or "nenhuma"}',
+        f'- Colunas quase sempre preenchidas (menos de 1% ausente): {", ".join(almost_filled) or "nenhuma"}',
         f'- Colunas vazias em mais da metade das linhas: {", ".join(mostly_empty) or "nenhuma"}',
         '',
         'Limitação: a porcentagem do histórico inteiro pode esconder uma coluna que só passou '
         'a ser preenchida a partir de certo ano. A divisão por categoria mostra parte disso, '
         'porque as categorias mensais só existem a partir de 2023.',
+        '',
+        '### Decisão por coluna',
+        '',
+        'Cada coluna foi avaliada por dois critérios: se está vazia na maior parte das linhas '
+        'e se tem uso nas consultas do projeto. O endereço não é usado nessas consultas, mas fica '
+        'porque é um dado do posto, que vai para uma tabela própria no banco.',
+        '',
+        decisions.to_markdown(index=False),
+        '',
+        f'O pipeline da Fase 1 vai ler {len(kept)} das {len(decisions)} colunas: {", ".join(kept)}.',
     ]
 
     return '\n'.join(lines)

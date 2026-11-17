@@ -100,14 +100,14 @@ Os 182 arquivos foram lidos sem erro: a regra de leitura funciona para todos.
 
 | categoria                        |   arquivos |   linhas | memoria   |   segundos |
 |:---------------------------------|-----------:|---------:|:----------|-----------:|
-| Combustíveis automotivos         |         45 | 25464380 | 21.85 GB  |       63.7 |
-| Etanol Hidratado + Gasolina C    |         46 |  2269530 | 1.92 GB   |        6.3 |
-| GLP P13                          |         45 |  6345989 | 5.37 GB   |       21.6 |
-| Óleo Diesel (S-500 e S-10) + GNV |         46 |  1054801 | 914.00 MB |        2.5 |
-| total                            |        182 | 35134700 | 30.04 GB  |       94.1 |
+| Combustíveis automotivos         |         45 | 25464380 | 21.85 GB  |       71.1 |
+| Etanol Hidratado + Gasolina C    |         46 |  2269530 | 1.92 GB   |        8.2 |
+| GLP P13                          |         45 |  6345989 | 5.37 GB   |       19.5 |
+| Óleo Diesel (S-500 e S-10) + GNV |         46 |  1054801 | 914.00 MB |        5.9 |
+| total                            |        182 | 35134700 | 30.04 GB  |      104.7 |
 
 - Total de linhas: 35.134.700
-- Tempo total de leitura: 94.1 segundos
+- Tempo total de leitura: 104.7 segundos
 - Em memória, cada arquivo ocupa em média 5.4 vezes o seu tamanho em disco (de 5.2 a 5.8 vezes).
 - Maior arquivo em memória: `2º semestre de 2004.csv` (Combustíveis automotivos), com 150.79 MB em disco e 810.24 MB em memória.
 
@@ -140,7 +140,32 @@ Os valores são a porcentagem de linhas sem valor, por categoria e no histórico
 | Unidade de Medida |                        0.0 |                             0.0 |       0.0 |                                0.1 |     0.0 |
 | Bandeira          |                        0.0 |                             0.0 |       0.0 |                                0.1 |     0.0 |
 
-- Colunas sempre preenchidas: nenhuma
+- Colunas quase sempre preenchidas (menos de 1% ausente): `Regiao - Sigla`, `Estado - Sigla`, `Municipio`, `Revenda`, `CNPJ da Revenda`, `Nome da Rua`, `Numero Rua`, `Bairro`, `Cep`, `Produto`, `Data da Coleta`, `Valor de Venda`, `Unidade de Medida`, `Bandeira`
 - Colunas vazias em mais da metade das linhas: `Complemento`, `Valor de Compra`
 
 Limitação: a porcentagem do histórico inteiro pode esconder uma coluna que só passou a ser preenchida a partir de certo ano. A divisão por categoria mostra parte disso, porque as categorias mensais só existem a partir de 2023.
+
+### Decisão por coluna
+
+Cada coluna foi avaliada por dois critérios: se está vazia na maior parte das linhas e se tem uso nas consultas do projeto. O endereço não é usado nessas consultas, mas fica porque é um dado do posto, que vai para uma tabela própria no banco.
+
+| coluna            | decisao   | motivo                                                                                             |
+|:------------------|:----------|:---------------------------------------------------------------------------------------------------|
+| Regiao - Sigla    | fica      | Agrupa as médias por região                                                                        |
+| Estado - Sigla    | fica      | Filtro por estado (ex.: estado com o etanol mais barato)                                           |
+| Municipio         | fica      | Filtro por cidade (ex.: preço da gasolina em Goiânia)                                              |
+| Revenda           | fica      | Nome do posto                                                                                      |
+| CNPJ da Revenda   | fica      | Identifica o posto e faz parte da chave do registro                                                |
+| Nome da Rua       | fica      | Endereço do posto, para a tabela de postos                                                         |
+| Numero Rua        | fica      | Endereço do posto, para a tabela de postos                                                         |
+| Complemento       | sai       | Vazia na maior parte das linhas e sem uso nas consultas do projeto                                 |
+| Bairro            | fica      | Endereço do posto, para a tabela de postos                                                         |
+| Cep               | fica      | Endereço do posto, para a tabela de postos                                                         |
+| Produto           | fica      | Todas as consultas filtram por produto                                                             |
+| Data da Coleta    | fica      | Base de toda análise no tempo                                                                      |
+| Valor de Venda    | fica      | É o preço, o centro do projeto                                                                     |
+| Valor de Compra   | sai       | Vazia na maior parte das linhas, e em todas as categorias mensais; nenhuma consulta do projeto usa |
+| Unidade de Medida | fica      | Diferencia as unidades dos produtos (ex.: o GLP é vendido por botijão de 13 kg)                    |
+| Bandeira          | fica      | Permite comparar preços por bandeira do posto                                                      |
+
+O pipeline da Fase 1 vai ler 14 das 16 colunas: `Regiao - Sigla`, `Estado - Sigla`, `Municipio`, `Revenda`, `CNPJ da Revenda`, `Nome da Rua`, `Numero Rua`, `Bairro`, `Cep`, `Produto`, `Data da Coleta`, `Valor de Venda`, `Unidade de Medida`, `Bandeira`.
