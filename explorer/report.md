@@ -1,63 +1,31 @@
-# Exploração dos dados brutos da ANP
+## ================================== INVENTÁRIO ==================================
 
-Relatório gerado por `explorer.py` a partir dos arquivos em `raw/`, baixados pelo coletor da série histórica de preços de combustíveis da ANP.
+Arquivos: 182
 
-O objetivo da exploração é entender a fonte antes de escrever o pipeline: o que existe, em que formato e com que qualidade. 
+Tamanho em disco: 5.59 GB
 
-Para gerar o relatório novamente: `python explorer.py`.
+Resumo por categoria (datas que o nome do arquivo declara cobrir):
 
-## Inventário
+| categoria                        |   arquivos | tamanho   | periodo   | primeiro   | ultimo     |
+|:---------------------------------|-----------:|:----------|:----------|:-----------|:-----------|
+| Combustíveis automotivos         |         45 | 4.11 GB   | Semestral | 2004-01-01 | 2026-06-30 |
+| Etanol Hidratado + Gasolina C    |         46 | 370.77 MB | Mensal    | 2023-01-01 | 2026-10-31 |
+| GLP P13                          |         45 | 969.64 MB | Semestral | 2004-01-01 | 2026-06-30 |
+| Óleo Diesel (S-500 e S-10) + GNV |         46 | 170.62 MB | Mensal    | 2023-01-01 | 2026-10-31 |
 
-Os arquivos ficam organizados em uma subpasta por categoria de produto. O período de cada arquivo foi extraído do nome, que segue um de dois padrões: semestral (`1º semestre de 2004.csv`) ou mensal (`Abril de 2023.csv`).
+Lacunas na sequência de períodos: nenhuma
 
-- Total de arquivos: 182
-- Tamanho total: 5.59 GB
-
-### Resumo por categoria
-
-`primeiro` é o início do período mais antigo e `ultimo` é o fim do mais recente. As datas são o período que o nome do arquivo **declara** cobrir; a comparação com as datas reais de coleta fica para as validações de qualidade da Fase 2. Os tamanhos usam base binária (1 MB = 1024² bytes).
-
-| categoria                        |   arquivos | tamanho   | primeiro   | ultimo     |
-|:---------------------------------|-----------:|:----------|:-----------|:-----------|
-| Combustíveis automotivos         |         45 | 4.11 GB   | 2004-01-01 | 2026-06-30 |
-| Etanol Hidratado + Gasolina C    |         46 | 370.77 MB | 2023-01-01 | 2026-10-31 |
-| GLP P13                          |         45 | 969.64 MB | 2004-01-01 | 2026-06-30 |
-| Óleo Diesel (S-500 e S-10) + GNV |         46 | 170.62 MB | 2023-01-01 | 2026-10-31 |
-
-### Tipo de período por categoria
-
-Cada categoria usa um único tipo de período. Essa é a premissa da verificação de lacunas, que gera a sequência esperada a partir desse tipo.
-
-| categoria                        |   Mensal |   Semestral |
-|:---------------------------------|---------:|------------:|
-| Combustíveis automotivos         |        0 |          45 |
-| Etanol Hidratado + Gasolina C    |       46 |           0 |
-| GLP P13                          |        0 |          45 |
-| Óleo Diesel (S-500 e S-10) + GNV |       46 |           0 |
-
-## Verificação de lacunas
-
-Para cada categoria, foi gerada a sequência de períodos que deveria existir entre o primeiro e o último arquivo (mês a mês ou semestre a semestre), que depois foi comparada com os períodos encontrados.
-
-Limitações: as pontas não são verificadas (se faltar o primeiro ou o último arquivo, a lacuna não aparece) e períodos repetidos não são detectados.
-
-Nenhuma lacuna encontrada: todas as categorias têm a sequência completa entre o primeiro e o último período.
-
-## Verificação dos nomes dos arquivos
-
-Cada nome de arquivo foi comparado com o formato exato esperado: `1º semestre de 2004.csv` para os semestrais e `Abril de 2023.csv` para os mensais. O objetivo é encontrar nomes que parecem iguais, mas usam caracteres diferentes.
-
-Arquivos fora do formato: 1
+Nomes de arquivo fora do formato esperado: 1
 
 | categoria                | arquivo                 |
 |:-------------------------|:------------------------|
 | Combustíveis automotivos | 2° semestre de 2023.csv |
 
-Arquivos que usam o símbolo de grau (°) no lugar do indicador ordinal (º): 1. Os dois são visualmente iguais, mas são caracteres diferentes. A extração do período não é afetada, porque o padrão usado no inventário aceita qualquer símbolo entre o número e a palavra "semestre".
+Usam o símbolo de grau (°) no lugar do ordinal (º): 1
 
-## Formato físico
+## ================================ FORMATO FÍSICO ================================
 
-### Delimitador
+Delimitador detectado (número de arquivos):
 
 | categoria                        |   ; |   total |
 |:---------------------------------|----:|--------:|
@@ -67,59 +35,72 @@ Arquivos que usam o símbolo de grau (°) no lugar do indicador ordinal (º): 1.
 | Óleo Diesel (S-500 e S-10) + GNV |  46 |      46 |
 | total                            | 182 |     182 |
 
-### Cabeçalho
+Cabeçalho: igual nos 182 arquivos, com 16 colunas:
 
-Todos os 182 arquivos têm o mesmo cabeçalho, com 16 colunas na mesma ordem:
+   1. Regiao - Sigla
 
-1. `Regiao - Sigla`
-2. `Estado - Sigla`
-3. `Municipio`
-4. `Revenda`
-5. `CNPJ da Revenda`
-6. `Nome da Rua`
-7. `Numero Rua`
-8. `Complemento`
-9. `Bairro`
-10. `Cep`
-11. `Produto`
-12. `Data da Coleta`
-13. `Valor de Venda`
-14. `Valor de Compra`
-15. `Unidade de Medida`
-16. `Bandeira`
+   2. Estado - Sigla
 
-## Leitura completa
+   3. Municipio
 
-Cada arquivo foi lido inteiro com a regra de leitura definida no formato físico (`sep=';'`, `encoding='utf-8'`, todas as colunas como texto), registrando o número de linhas, o tempo de leitura e a memória ocupada pelo DataFrame. O objetivo é confirmar que a regra funciona para todos os arquivos e conhecer o tamanho real dos dados.
+   4. Revenda
 
-Os 182 arquivos foram lidos sem erro: a regra de leitura funciona para todos.
+   5. CNPJ da Revenda
 
-### Tamanho dos dados
+   6. Nome da Rua
 
-`memoria` é a memória que os arquivos ocupam depois de lidos pelo pandas e `segundos` é o tempo de leitura. Os totais somam todos os arquivos da categoria.
+   7. Numero Rua
 
-| categoria                        |   arquivos |   linhas | memoria   |   segundos |
-|:---------------------------------|-----------:|---------:|:----------|-----------:|
-| Combustíveis automotivos         |         45 | 25464380 | 21.85 GB  |       71.1 |
-| Etanol Hidratado + Gasolina C    |         46 |  2269530 | 1.92 GB   |        8.2 |
-| GLP P13                          |         45 |  6345989 | 5.37 GB   |       19.5 |
-| Óleo Diesel (S-500 e S-10) + GNV |         46 |  1054801 | 914.00 MB |        5.9 |
-| total                            |        182 | 35134700 | 30.04 GB  |      104.7 |
+   8. Complemento
 
-- Total de linhas: 35.134.700
-- Tempo total de leitura: 104.7 segundos
-- Em memória, cada arquivo ocupa em média 5.4 vezes o seu tamanho em disco (de 5.2 a 5.8 vezes).
-- Maior arquivo em memória: `2º semestre de 2004.csv` (Combustíveis automotivos), com 150.79 MB em disco e 810.24 MB em memória.
+   9. Bairro
 
-Carregar o histórico inteiro de uma vez ocuparia cerca de 30.04 GB de memória, enquanto o maior arquivo sozinho ocupa 810.24 MB. Por isso a leitura, aqui e no pipeline da Fase 1, é feita um arquivo por vez.
+  10. Cep
 
-Limitação: uma linha com campos a mais faz a leitura do arquivo falhar, e o arquivo apareceria na lista de falhas. Uma linha com campos a menos não gera erro: o pandas completa os campos que faltam com nulos. Esses casos aparecem na análise de nulos.
+  11. Produto
 
-## Perfil das colunas
+  12. Data da Coleta
 
-Para cada coluna, foi contada a quantidade de valores ausentes em todos os arquivos. Conta como ausente o campo vazio e o campo que só tem espaços: o pandas reconhece só o primeiro como nulo, então o segundo foi contado à parte. O objetivo é decidir quais colunas o pipeline da Fase 1 vai usar.
+  13. Valor de Venda
 
-Os valores são a porcentagem de linhas sem valor, por categoria e no histórico inteiro (`total`).
+  14. Valor de Compra
+
+  15. Unidade de Medida
+
+  16. Bandeira
+
+## =============================== LEITURA COMPLETA ===============================
+
+Arquivos lidos sem erro: 182 de 182
+
+Totais por categoria (memoria = ocupada pelo pandas depois da leitura):
+
+| categoria                        |   arquivos |   linhas |   linhas_vazias | memoria   |   segundos |
+|:---------------------------------|-----------:|---------:|----------------:|:----------|-----------:|
+| Combustíveis automotivos         |         45 | 25464380 |            9114 | 21.85 GB  |       65.9 |
+| Etanol Hidratado + Gasolina C    |         46 |  2269530 |               0 | 1.92 GB   |        5.9 |
+| GLP P13                          |         45 |  6345989 |               0 | 5.37 GB   |       28.8 |
+| Óleo Diesel (S-500 e S-10) + GNV |         46 |  1054801 |            1477 | 914.00 MB |        3.4 |
+| total                            |        182 | 35134700 |           10591 | 30.04 GB  |      104.1 |
+
+Total de linhas: 35,134,700
+
+Linhas totalmente vazias: 10,591 nos arquivos:
+
+| categoria                        | arquivo                 |   linhas_vazias |
+|:---------------------------------|:------------------------|----------------:|
+| Combustíveis automotivos         | 1º semestre de 2025.csv |            9114 |
+| Óleo Diesel (S-500 e S-10) + GNV | Janeiro de 2023.csv     |            1477 |
+
+Memória / tamanho em disco: média de 5.4x (de 5.2x a 5.8x)
+
+Maior arquivo em memória: Combustíveis automotivos / 2º semestre de 2004.csv (150.79 MB em disco, 810.24 MB em memória)
+
+Histórico inteiro em memória: 30.04 GB
+
+## ============================== PERFIL DAS COLUNAS ==============================
+
+Porcentagem de valores ausentes (campo vazio ou só com espaços), por categoria e no total:
 
 | coluna            |   Combustíveis automotivos |   Etanol Hidratado + Gasolina C |   GLP P13 |   Óleo Diesel (S-500 e S-10) + GNV |   total |
 |:------------------|---------------------------:|--------------------------------:|----------:|-----------------------------------:|--------:|
@@ -140,32 +121,6 @@ Os valores são a porcentagem de linhas sem valor, por categoria e no histórico
 | Unidade de Medida |                        0.0 |                             0.0 |       0.0 |                                0.1 |     0.0 |
 | Bandeira          |                        0.0 |                             0.0 |       0.0 |                                0.1 |     0.0 |
 
-- Colunas quase sempre preenchidas (menos de 1% ausente): `Regiao - Sigla`, `Estado - Sigla`, `Municipio`, `Revenda`, `CNPJ da Revenda`, `Nome da Rua`, `Numero Rua`, `Bairro`, `Cep`, `Produto`, `Data da Coleta`, `Valor de Venda`, `Unidade de Medida`, `Bandeira`
-- Colunas vazias em mais da metade das linhas: `Complemento`, `Valor de Compra`
+Menos de 1% ausente: Regiao - Sigla, Estado - Sigla, Municipio, Revenda, CNPJ da Revenda, Nome da Rua, Numero Rua, Bairro, Cep, Produto, Data da Coleta, Valor de Venda, Unidade de Medida, Bandeira
 
-Limitação: a porcentagem do histórico inteiro pode esconder uma coluna que só passou a ser preenchida a partir de certo ano. A divisão por categoria mostra parte disso, porque as categorias mensais só existem a partir de 2023.
-
-### Decisão por coluna
-
-Cada coluna foi avaliada por dois critérios: se está vazia na maior parte das linhas e se tem uso nas consultas do projeto. O endereço não é usado nessas consultas, mas fica porque é um dado do posto, que vai para uma tabela própria no banco.
-
-| coluna            | decisao   | motivo                                                                                             |
-|:------------------|:----------|:---------------------------------------------------------------------------------------------------|
-| Regiao - Sigla    | fica      | Agrupa as médias por região                                                                        |
-| Estado - Sigla    | fica      | Filtro por estado (ex.: estado com o etanol mais barato)                                           |
-| Municipio         | fica      | Filtro por cidade (ex.: preço da gasolina em Goiânia)                                              |
-| Revenda           | fica      | Nome do posto                                                                                      |
-| CNPJ da Revenda   | fica      | Identifica o posto e faz parte da chave do registro                                                |
-| Nome da Rua       | fica      | Endereço do posto, para a tabela de postos                                                         |
-| Numero Rua        | fica      | Endereço do posto, para a tabela de postos                                                         |
-| Complemento       | sai       | Vazia na maior parte das linhas e sem uso nas consultas do projeto                                 |
-| Bairro            | fica      | Endereço do posto, para a tabela de postos                                                         |
-| Cep               | fica      | Endereço do posto, para a tabela de postos                                                         |
-| Produto           | fica      | Todas as consultas filtram por produto                                                             |
-| Data da Coleta    | fica      | Base de toda análise no tempo                                                                      |
-| Valor de Venda    | fica      | É o preço, o centro do projeto                                                                     |
-| Valor de Compra   | sai       | Vazia na maior parte das linhas, e em todas as categorias mensais; nenhuma consulta do projeto usa |
-| Unidade de Medida | fica      | Diferencia as unidades dos produtos (ex.: o GLP é vendido por botijão de 13 kg)                    |
-| Bandeira          | fica      | Permite comparar preços por bandeira do posto                                                      |
-
-O pipeline da Fase 1 vai ler 14 das 16 colunas: `Regiao - Sigla`, `Estado - Sigla`, `Municipio`, `Revenda`, `CNPJ da Revenda`, `Nome da Rua`, `Numero Rua`, `Bairro`, `Cep`, `Produto`, `Data da Coleta`, `Valor de Venda`, `Unidade de Medida`, `Bandeira`.
+Mais de 50% ausente: Complemento, Valor de Compra

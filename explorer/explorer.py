@@ -1,4 +1,10 @@
-"""Exploração dos arquivos da ANP"""
+"""Exploração dos arquivos da ANP
+
+Roda todas as etapas da exploração, imprime os resultados no terminal
+e grava os mesmos resultados em report.md:
+
+    python explorer.py
+"""
 
 # region Imports
 
@@ -11,20 +17,39 @@ import pandas as pd
 
 # Módulos do projeto
 import utils
+from utils import Report
 
 # endregion
 
 # region Constantes
 
+# Pasta raiz dos arquivos brutos
+RAW_PATH = Path('raw')
+
+# Arquivo onde o resultado da exploração é gravado
+REPORT_PATH = Path('report.md')
+
 # Mapeamento dos meses do ano para números
-MONTHS_DICT = {'janeiro': 1, 'fevereiro': 2, 'março': 3, 'abril': 4, 'maio': 5, 'junho': 6,
-               'julho': 7, 'agosto': 8, 'setembro': 9, 'outubro': 10, 'novembro': 11, 'dezembro': 12}
+MONTHS_DICT = {
+    'janeiro': 1,
+    'fevereiro': 2,
+    'março': 3,
+    'abril': 4,
+    'maio': 5,
+    'junho': 6,
+    'julho': 7,
+    'agosto': 8,
+    'setembro': 9,
+    'outubro': 10,
+    'novembro': 11,
+    'dezembro': 12
+}
 
 # Dicionário para mapear o período para o pandas
-FREQ = {'Mensal':'MS', 'Semestral':'6MS'}
-
-# Caminho do arquivo relatório
-REPORT_PATH = Path('report.md')
+FREQ = {
+    'Mensal':'MS',
+    'Semestral':'6MS'
+}
 
 # Formato esperado de meses do ano
 MONTHS = 'Janeiro|Fevereiro|Março|Abril|Maio|Junho|Julho|Agosto|Setembro|Outubro|Novembro|Dezembro'
@@ -35,27 +60,8 @@ STRICT_PATTERNS = [
     rf'^({MONTHS}) de \d{{4}}\.csv$'
 ]
 
-# Decisão sobre cada coluna do CSV no pipeline da Fase 1: (decisão, motivo).
-ADDRESS_REASON = 'Endereço do posto, para a tabela de postos'
-COLUMN_DECISIONS = {
-    'Regiao - Sigla': ('fica', 'Agrupa as médias por região'),
-    'Estado - Sigla': ('fica', 'Filtro por estado (ex.: estado com o etanol mais barato)'),
-    'Municipio': ('fica', 'Filtro por cidade (ex.: preço da gasolina em Goiânia)'),
-    'Revenda': ('fica', 'Nome do posto'),
-    'CNPJ da Revenda': ('fica', 'Identifica o posto e faz parte da chave do registro'),
-    'Nome da Rua': ('fica', ADDRESS_REASON),
-    'Numero Rua': ('fica', ADDRESS_REASON),
-    'Complemento': ('sai', 'Vazia na maior parte das linhas e sem uso nas consultas do projeto'),
-    'Bairro': ('fica', ADDRESS_REASON),
-    'Cep': ('fica', ADDRESS_REASON),
-    'Produto': ('fica', 'Todas as consultas filtram por produto'),
-    'Data da Coleta': ('fica', 'Base de toda análise no tempo'),
-    'Valor de Venda': ('fica', 'É o preço, o centro do projeto'),
-    'Valor de Compra': ('sai', 'Vazia na maior parte das linhas, e em todas as categorias mensais; '
-                               'nenhuma consulta do projeto usa'),
-    'Unidade de Medida': ('fica', 'Diferencia as unidades dos produtos (ex.: o GLP é vendido por botijão de 13 kg)'),
-    'Bandeira': ('fica', 'Permite comparar preços por bandeira do posto'),
-}
+# Relatório da exploração, usado em todas as etapas
+REPORT = Report()
 
 # endregion
 
@@ -63,15 +69,15 @@ COLUMN_DECISIONS = {
 
 def build_inventory(path):
     """Monta o inventário dos arquivos CSV brutos, uma linha por arquivo.
-    
-    A categoria é o nome da subpasta onde o arquivo está. 
+
+    A categoria é o nome da subpasta onde o arquivo está.
     O período é extraído do nome do arquivo, que segue os padrões semestral ou mensal.
-    As datas de início e fim são o período que o nome declara cobrir, 
+    As datas de início e fim são o período que o nome declara cobrir,
     não são datas coletadas de dentro do arquivo.
-    
+
     Args:
         path: Pasta raiz dos arquivos
-    
+
     Returns:
         DataFrame do pandas com as colunas:
             'categoria': Nome da subpasta onde o arquivo está
@@ -81,7 +87,7 @@ def build_inventory(path):
             'periodo': Tipo do período
             'inicio': Data de início
             'fim': Data de fim
-    
+
     Raises:
         FileNotFoundError: Se `path` não existir ou não for uma pasta.
         ValueError: Se o nome do arquivo não seguir os padrões semestral ou mensal.
@@ -99,7 +105,7 @@ def build_inventory(path):
 
     # Todos os csv encontrados
     all_csvs = list(path.rglob('*.csv'))
-    
+
     # Para cada arquivo encontrado
     for csv in all_csvs:
 
@@ -115,10 +121,10 @@ def build_inventory(path):
         # Se a busca encontrar o padrão
         if m is not None:
 
-            # Semestre coberto pelo arquivo
+            # Semestre de refência do arquivo
             semester = int(m.group(1))
 
-            # Ano dos dados do arquivo
+            # Ano de referência do arquivo
             year = int(m.group(2))
 
             # Tipo do período
@@ -181,72 +187,22 @@ def build_inventory(path):
 
     return pd.DataFrame(info_list)
 
-def inventory_section(inventory:pd.DataFrame) -> str:
-    """Monta a seção de inventário no relatório de resultados."""
-
-    total_files = len(inventory)
-    total_size = utils.format_mb(inventory['tamanho'].sum())
-
-    summary = inventory.groupby('categoria').agg(
-       arquivos=('arquivo', 'count'),
-        tamanho=('tamanho', 'sum'),
-        primeiro=('inicio', 'min'),
-        ultimo=('fim', 'max'),
-    )
-
-    # Formata o sumário para exibição
-    summary['tamanho'] = summary['tamanho'].map(utils.format_mb)
-    summary['primeiro'] = summary['primeiro'].dt.strftime('%Y-%m-%d')
-    summary['ultimo'] = summary['ultimo'].dt.strftime('%Y-%m-%d')
-
-    # Quantidade de tipos de período por categoria
-    type_category = pd.crosstab(inventory['categoria'], inventory['periodo'])
-
-    lines = [
-        '## Inventário',
-        '',
-        'Os arquivos ficam organizados em uma subpasta por categoria de produto. '
-        'O período de cada arquivo foi extraído do nome, que segue um de dois padrões: '
-        'semestral (`1º semestre de 2004.csv`) ou mensal (`Abril de 2023.csv`).',
-        '',
-        f'- Total de arquivos: {total_files}',
-        f'- Tamanho total: {total_size}',
-        '',
-        '### Resumo por categoria',
-        '',
-        '`primeiro` é o início do período mais antigo e `ultimo` é o fim do mais recente. '
-        'As datas são o período que o nome do arquivo **declara** cobrir; a comparação '
-        'com as datas reais de coleta fica para as validações de qualidade da Fase 2. '
-        'Os tamanhos usam base binária (1 MB = 1024² bytes).',
-        '',
-        summary.to_markdown(),
-        '',
-        '### Tipo de período por categoria',
-        '',
-        'Cada categoria usa um único tipo de período. Essa é a premissa da '
-        'verificação de lacunas, que gera a sequência esperada a partir desse tipo.',
-        '',
-        type_category.to_markdown(),
-    ]
-
-    return '\n'.join(lines)
-
 def identify_gaps(inventory: pd.DataFrame) -> pd.DataFrame:
     """Identifica lacunas no inventário.
-    
+
     Checa períodos faltando em cada categoria.
     Não cobre períodos repetidos. As pontas não são verificadas então,
     se faltar o primeiro ou o último período nada acontece.
     Presume que cada categoria tem o mesmo tipo em todos os arquivos.
-    
+
     Args:
         inventory: DataFrame do inventário
-    
+
     Returns:
         DataFrame das lacunas, com as colunas:
             'categoria': Categoria do arquivo
             'faltando': lista com as datas de inicio dos períodos ausentes na categoria
-    
+
     """
 
     # Lista com o resultado da verificação
@@ -254,7 +210,7 @@ def identify_gaps(inventory: pd.DataFrame) -> pd.DataFrame:
 
     # Itera sobre as categorias
     for category, group in inventory.groupby('categoria'):
-        
+
         # Pega o período usado na categoria
         period_type = group['periodo'].iloc[0]
 
@@ -273,52 +229,15 @@ def identify_gaps(inventory: pd.DataFrame) -> pd.DataFrame:
 
     return pd.DataFrame(gaps_list)
 
-def gaps_section(gaps:pd.DataFrame) -> str:
-    """Monta a seção de lacunas no relatório de resultados."""
-
-    gaps_quantity = gaps['faltando'].str.len().sum()
-
-    # Só as categorias que têm lacunas
-    gaps_table = gaps[gaps['faltando'].str.len() > 0].copy()
-
-    # Troca a lista de Timestamps por um texto com as datas no formato ano-mês.
-    gaps_table['faltando'] = gaps_table['faltando'].map(
-    
-        # Para cada lista, formata cada data e junta tudo separado por vírgula
-        lambda dates: ', '.join(date.strftime('%Y-%m') for date in dates)
-    )
-
-    lines = [
-        '## Verificação de lacunas',
-        '',
-        'Para cada categoria, foi gerada a sequência de períodos que deveria existir '
-        'entre o primeiro e o último arquivo (mês a mês ou semestre a semestre), '
-        'que depois foi comparada com os períodos encontrados.',
-        '',
-        'Limitações: as pontas não são verificadas (se faltar o primeiro ou o último '
-        'arquivo, a lacuna não aparece) e períodos repetidos não são detectados.',
-        '',
-    ]
-
-    if gaps_quantity > 0:
-        lines.append(f'Lacunas encontradas: {gaps_quantity}')
-        lines.append('')
-        lines.append(gaps_table.to_markdown(index=False))
-    else:
-        lines.append('Nenhuma lacuna encontrada: todas as categorias têm a sequência '
-                     'completa entre o primeiro e o último período.')
-
-    return '\n'.join(lines)
-
 def find_names_inconsistencies(inventory:pd.DataFrame) -> pd.DataFrame:
     """Encontra inconsistências nos nomes dos arquivos do inventário
-    
+
     Compara o nome do arquivo com o padrão estrito esperado em STRICT_PATTERNS.
     Encontra caracteres fora do padrão, mesmo que visualmente sejam iguais
 
     Args:
         inventory: DataFrame do inventário gerado em build_inventory
-    
+
     Returns:
         DataFrame com os arquivos de nome fora do padrão esperado. Colunas:
             categoria: A categoria do arquivo encontrado
@@ -343,257 +262,275 @@ def find_names_inconsistencies(inventory:pd.DataFrame) -> pd.DataFrame:
 
     return pd.DataFrame(lines)
 
-def names_section(names_inconsistencies: pd.DataFrame) -> str:
-    """Monta a seção do relatório com a verificação dos nomes dos arquivos."""
+def show_inventory(inventory: pd.DataFrame) -> None:
+    """Imprime arquivos por categoria, lacunas e nomes fora do padrão."""
 
-    lines = [
-        '## Verificação dos nomes dos arquivos',
-        '',
-        'Cada nome de arquivo foi comparado com o formato exato esperado: '
-        '`1º semestre de 2004.csv` para os semestrais e `Abril de 2023.csv` para os mensais. '
-        'O objetivo é encontrar nomes que parecem iguais, mas usam caracteres diferentes.',
-        '',
-    ]
+    REPORT.title('INVENTÁRIO')
 
-    if names_inconsistencies.empty:
-        lines.append('Todos os nomes seguem o formato esperado.')
+    # Totais gerais do inventário
+    REPORT.line(f'Arquivos: {len(inventory)}')
+    REPORT.line(f'Tamanho em disco: {utils.format_mb(inventory["tamanho"].sum())}')
+    REPORT.line()
+
+    # Resumo por categoria: quantidade, tamanho, tipo de período e cobertura
+    summary = inventory.groupby('categoria').agg(
+        arquivos=('arquivo', 'count'),
+        tamanho=('tamanho', 'sum'),
+        periodo=('periodo', 'first'),
+        primeiro=('inicio', 'min'),
+        ultimo=('fim', 'max'),
+    )
+
+    # Formata o tamanho e as datas para exibição
+    summary['tamanho'] = summary['tamanho'].map(utils.format_mb)
+    summary['primeiro'] = summary['primeiro'].dt.strftime('%Y-%m-%d')
+    summary['ultimo'] = summary['ultimo'].dt.strftime('%Y-%m-%d')
+
+    REPORT.line('Resumo por categoria (datas que o nome do arquivo declara cobrir):')
+    REPORT.table(summary)
+
+    # Quantos tipos de período cada categoria usa. A verificação de lacunas presume um só
+    period_types = inventory.groupby('categoria')['periodo'].nunique()
+
+    # Avisa se alguma categoria mistura arquivos mensais e semestrais
+    if (period_types > 1).any():
+        REPORT.line('Categorias com mais de um tipo de período:')
+        REPORT.line(', '.join(period_types[period_types > 1].index))
+        REPORT.line()
+
+    # Lacunas: períodos que faltam entre o primeiro e o último arquivo de cada categoria
+    gaps = identify_gaps(inventory)
+
+    # Só as categorias que têm lacunas
+    gaps = gaps[gaps['faltando'].str.len() > 0].copy()
+
+    if gaps.empty:
+        REPORT.line('Lacunas na sequência de períodos: nenhuma')
+        REPORT.line()
     else:
-        lines.append(f'Arquivos fora do formato: {len(names_inconsistencies)}')
-        lines.append('')
-        lines.append(names_inconsistencies.to_markdown(index=False))
+        # Troca a lista de Timestamps por um texto com as datas no formato ano-mês
+        gaps['faltando'] = gaps['faltando'].map(
+            lambda dates: ', '.join(date.strftime('%Y-%m') for date in dates)
+        )
 
-        # Quantos dos nomes fora do formato usam o símbolo de grau no lugar do ordinal
-        degree_count = names_inconsistencies['arquivo'].str.contains('°').sum()
+        REPORT.line('Lacunas na sequência de períodos:')
+        REPORT.table(gaps, index=False)
 
-        # Só explica o caso do símbolo de grau se ele realmente aparecer
+    # Nomes de arquivo que não seguem o formato exato esperado
+    names = find_names_inconsistencies(inventory)
+
+    if names.empty:
+
+        REPORT.line('Nomes de arquivo fora do formato esperado: nenhum')
+
+    else:
+
+        REPORT.line(f'Nomes de arquivo fora do formato esperado: {len(names)}')
+        REPORT.table(names, index=False)
+
+        # Quantos desses nomes usam o símbolo de grau no lugar do ordinal
+        degree_count = names['arquivo'].str.contains('°').sum()
+
+        # Só mostra a contagem se o símbolo de grau realmente aparecer
         if degree_count > 0:
-            lines.append('')
-            lines.append(
-                f'Arquivos que usam o símbolo de grau (°) no lugar do indicador ordinal (º): '
-                f'{degree_count}. Os dois são visualmente iguais, mas são caracteres '
-                'diferentes. A extração do período não é afetada, porque o padrão usado no '
-                'inventário aceita qualquer símbolo entre o número e a palavra "semestre".'
-            )
-
-    return '\n'.join(lines)
+            REPORT.line(f'Usam o símbolo de grau (°) no lugar do ordinal (º): {degree_count}')
 
 # endregion
 
 # region Formato físico
 
-def check_delimiter(inventory:pd.DataFrame) -> pd.DataFrame:
-    """Cria um DataFrame com a relação arquivo e delimitador.
+def show_format(inventory: pd.DataFrame) -> None:
+    """Imprime delimitadores e padrões de cabeçalho encontrados."""
 
-    Detecta o delimitador de cada arquivo do inventário.    
-    
-    Args:
-        inventory: DataFrame do inventário de arquivos (precisa da coluna 'caminho')
-    
-    Returns:
-        DataFrame com as colunas:
-            'categoria': Categoria do arquivo.
-            'arquivo': Nome do arquivo.
-            'delimitador': Delimitador usado pelo arquivo. Ou None caso não tenha sido possível decidir
-    """
+    REPORT.title('FORMATO FÍSICO')
 
-    # Cria um DataFrame result que copia duas colunas do inventory
-    result = inventory[['categoria', 'arquivo']].copy()
+    # Delimitador de cada arquivo. None vira 'não detectado' para aparecer na tabela
+    delimiters = inventory['caminho'].map(utils.find_delimiter).fillna('não detectado')
 
-    # Cria no result a coluna delimitador e encontra o delimitador para cada linha passando o caminho correspondente.
-    result['delimitador'] = inventory['caminho'].map(utils.find_delimiter)
-
-    return result
-
-def delimiter_section(delimiters:pd.DataFrame) -> str:
-    """Monta a seção dos delimitadores para o relatório.
-    
-    Mostra uma tabela com a contagem de arquivos por categoria e delimitador.
-    Se houver mais de um delimitador, lista os arquivos que não usam o predominante.
-    
-    Args:
-        delimiters: O DataFrame com os delimitadores identificados por arquivo
-    
-    Returns:
-        A string da seção para o relatório
-    """
-    
+    # Contagem de arquivos por categoria e delimitador, com linha e coluna de total
     summary = pd.crosstab(
-        delimiters['categoria'],
-
-        # Substitui o None por 'não detectado'
-        delimiters['delimitador'].fillna('não detectado'),
-
-        # Adiciona uma linha e uma coluna com a soma
+        inventory['categoria'],
+        delimiters.rename('delimitador'),
         margins=True,
-
-        # Nome dessa linha e dessa coluna
         margins_name='total'
     )
 
-    # Lista de textos para o relatório
-    lines = [
-        '## Formato físico',
-        '',
-        '### Delimitador',
-        '',
-        summary.to_markdown(),
-    ]
+    REPORT.line('Delimitador detectado (número de arquivos):')
+    REPORT.table(summary)
 
-    # Se houver mais de um valor diferente
-    if delimiters['delimitador'].nunique(dropna=False) > 1:
+    # Se houver mais de um delimitador, lista os arquivos fora do predominante
+    if delimiters.nunique() > 1:
 
-        # Encontra o delimitador principal
-        main_delim = delimiters['delimitador'].mode()[0]
+        # Delimitador mais comum
+        main_delim = delimiters.mode()[0]
 
-        # Separa as exceções
-        exceptions = delimiters[delimiters['delimitador'] != main_delim]
+        # Arquivos que usam outro delimitador
+        exceptions = inventory.loc[delimiters != main_delim, ['categoria', 'arquivo']]
 
-        # Adiciona à lista de textos
-        lines += ['', 'Arquivos fora do delimitador predominante: ', 
-                  '',
-                  exceptions.to_markdown(index= False)
-                ]
+        REPORT.line(f'Arquivos fora do delimitador predominante ({main_delim}):')
+        REPORT.table(exceptions, index=False)
 
-    return '\n'.join(lines)
+    # Cabeçalho de cada arquivo, como tupla com o nome das colunas
+    headers = inventory['caminho'].map(utils.read_header)
 
-def check_headers(inventory:pd.DataFrame) -> pd.DataFrame:
-    """Cria um DataFrame com o cabeçalho de cada arquivo.
-    
-    Args:
-        inventory: Inventário de arquivos
-    
-    Returns:
-        DataFrame com o cabeçalho dos arquivos. Colunas:
-            'categoria': Categoria do arquivo.
-            'arquivo': Nome do arquivo.
-            'cabecalho': Cabeçalho do arquivo.
-            'inicio': Data de inicio da cobertura do arquivo.
-    """
-    
-
-    # Copia as colunas 'categoria' e 'arquivo' para o DataFrame result
-    result = inventory[['categoria','arquivo', 'inicio']].copy()
-
-    # Cria a coluna 'cabecalho' e preenche usando a função read_header
-    result['cabecalho'] = inventory['caminho'].map(utils.read_header)
-
-    return result
-
-def archive_header_section(headers:pd.DataFrame) -> str:
-    """Monta a seção de verificação dos cabeçalhos no relatório.
-
-    Se todos os arquivos tiverem o mesmo cabeçalho, lista as colunas.
-    Se houver mais de um padrão, mostra uma tabela com cada padrão.
-
-    Args:
-        headers: DataFrame gerado por check_headers
-
-    Returns:
-        A string da seção para o relatório
-    """
-
-    # Agrupa os arquivos pelo cabeçalho. A coluna 'cabecalho' vira o índice
-    patterns = headers.groupby('cabecalho').agg(
-        arquivos = ('arquivo', 'count'),
-        primeiro= ('inicio', 'min'),
-        ultimo=('inicio', 'max')
+    # Agrupa os arquivos pelo cabeçalho. O cabeçalho vira o índice
+    patterns = inventory.groupby(headers.rename('cabecalho')).agg(
+        arquivos=('arquivo', 'count'),
+        primeiro=('inicio', 'min'),
+        ultimo=('inicio', 'max'),
     )
 
-    # Lista de textos para o relatório
-    lines = [
-        '### Cabeçalho',
-        '',
-    ]
-
-    # Se existe um único padrão de cabeçalho
+    # Um único cabeçalho: lista as colunas numeradas
     if len(patterns) == 1:
 
-        # Pega a tupla do único padrão, que está no índice
+        # A tupla do único cabeçalho, que está no índice
         columns = patterns.index[0]
 
-        lines.append(f'Todos os {len(headers)} arquivos têm o mesmo cabeçalho, '
-                     f'com {len(columns)} colunas na mesma ordem:')
-        lines.append('')
+        REPORT.line(f'Cabeçalho: igual nos {len(inventory)} arquivos, com {len(columns)} colunas:')
 
-        # Uma linha de lista numerada para cada coluna
+        # Uma linha para cada coluna, numerada a partir de 1
         for number, name in enumerate(columns, start=1):
-            lines.append(f'{number}. `{name}`')
 
+            REPORT.line(f'  {number:>2}. {name}')
+
+        REPORT.line()
+
+    # Mais de um cabeçalho: mostra cada padrão e o período em que aparece
     else:
-        lines.append(f'Foram encontrados {len(patterns)} cabeçalhos diferentes.')
-        lines.append('')
 
-        # Traz o cabeçalho do índice de volta para uma coluna, para ele aparecer na tabela
+        # Traz o cabeçalho do índice de volta para uma coluna
         table = patterns.reset_index()
 
-        # Formata as datas e transforma a tupla de colunas em texto
+        # Quantidade de colunas e datas formatadas
         table['colunas'] = table['cabecalho'].str.len()
         table['primeiro'] = table['primeiro'].dt.strftime('%Y-%m')
         table['ultimo'] = table['ultimo'].dt.strftime('%Y-%m')
+
+        # Transforma a tupla de colunas em texto separado por vírgula
         table['cabecalho'] = table['cabecalho'].map(', '.join)
 
-        # O cabeçalho vai por último porque é a coluna mais longa
-        table = table[['arquivos', 'primeiro', 'ultimo', 'colunas', 'cabecalho']]
-
-        lines.append(table.to_markdown(index=False))
-
-    return '\n'.join(lines)
+        REPORT.line(f'Cabeçalho: {len(patterns)} padrões diferentes:')
+        REPORT.table(table[['arquivos', 'primeiro', 'ultimo', 'colunas', 'cabecalho']], index=False)
 
 # endregion
 
-# region Leitura completa
+# region Leitura de todos os arquivos
 
-def check_reading(inventory:pd.DataFrame) -> pd.DataFrame:
+def profile_files(inventory: pd.DataFrame) -> tuple[pd.DataFrame, pd.DataFrame]:
+    """Lê cada arquivo uma vez e junta as medições de todos.
 
-    rows = []
+    Args:
+        inventory: Inventário de arquivos
+
+    Returns:
+        Tupla com dois DataFrames, ambos com uma linha por arquivo:
+
+            reading: Medições da leitura. Colunas:
+                'categoria': Nome da subpasta onde o arquivo está
+                'arquivo': Nome do arquivo
+                'tamanho': Tamanho do arquivo em disco, em MB
+                'linhas': Quantidade de linhas, sem o cabeçalho
+                'linhas_vazias': Quantidade de linhas com todos os campos ausentes
+                'segundos': Tempo de leitura do arquivo
+                'memoria_mb': Memória ocupada pelo DataFrame do arquivo, em MB
+                'erro': Mensagem do erro, se a leitura falhou, ou None
+                As medições de um arquivo que falhou ficam vazias.
+
+        nulls: Valores ausentes. Colunas:
+            'categoria': Nome da subpasta onde o arquivo está
+            Uma coluna para cada coluna do CSV, com a quantidade de valores ausentes.
+            Arquivos que falharam ficam de fora.
+    """
+
+    # Aviso de progresso: fica só no terminal, não vai para o relatório
+    print()
+    print('Lendo todos os arquivos inteiros...')
+
+    # Medições de leitura e contagens de nulos, uma linha por arquivo
+    reading_rows = []
+    nulls_rows = []
 
     # Total de arquivos, para mostrar o progresso
     total = len(inventory)
 
+    # Quantidade de dígitos do total
+    width = len(str(total))
+
     # enumerate numera as voltas do loop a partir de 1, para o print do progresso
     for number, row in enumerate(inventory.itertuples(), start=1):
 
-        # Obtém as estatísticas para o arquivo da linha atual
-        stats = utils.read_file_stats(row.caminho)
+        # Lê o arquivo e mede tudo de uma vez
+        profile = utils.profile_file(row.caminho)
 
-        # Mostra o progresso: o tempo de leitura ou o erro, se a leitura falhou
-        result = 'ERRO' if stats['erro'] is not None else f'{stats["segundos"]:.2f} s'
-        print(f'    [{number}/{total}] {row.categoria} / {row.arquivo}: {result}')
+        # Mostra o progresso: tempo de leitura e memória do arquivo, ou ERRO se a leitura falhou
+        result = ('ERRO' if profile['erro'] is not None else f'{profile["segundos"]:.2f} s, {utils.format_mb(profile["memoria_mb"])}')
 
-        # Obtém categoria
-        stats['categoria'] = row.categoria
+        print(f'    [{number:>{width}}/{total}] {row.categoria} / {row.arquivo}: {result}')
 
-        # Obtém nome do arquivo
-        stats['arquivo'] = row.arquivo
+        # Tira os nulos do dicionário, porque eles vão para outro DataFrame
+        nulls = profile.pop('nulos')
+
+        # Identifica de qual arquivo vieram as medições
+        profile['categoria'] = row.categoria
+        profile['arquivo'] = row.arquivo
 
         # Tamanho em disco, para comparar com a memória ocupada
-        stats['tamanho'] = row.tamanho
+        profile['tamanho'] = row.tamanho
 
-        # Adiciona à lista
-        rows.append(stats)
+        reading_rows.append(profile)
 
-    return pd.DataFrame(rows, columns=['categoria', 'arquivo', 'tamanho', 'linhas', 'segundos', 'memoria_mb', 'erro'])
+        # Arquivo que falhou não tem contagem de nulos
+        if nulls is not None:
 
-def reading_section(reading:pd.DataFrame) -> str:
-    """Monta a seção de leitura completa do relatório.
+            # Identifica a categoria, usada para agrupar as porcentagens
+            nulls['categoria'] = row.categoria
 
-    Mostra os totais de linhas, memória e tempo por categoria e no geral,
-    os arquivos que falharam na leitura e a relação entre memória e tamanho em disco.
+            nulls_rows.append(nulls)
 
-    Args:
-        reading: DataFrame gerado por check_reading
+    # Monta os DataFrames, com as colunas de identificação primeiro
+    reading = pd.DataFrame(
+        reading_rows,
+        columns=[
+            'categoria',
+            'arquivo',
+            'tamanho',
+            'linhas',
+            'linhas_vazias',
+            'segundos',
+            'memoria_mb',
+            'erro'
+            ]
+        )
+    nulls = pd.DataFrame(nulls_rows)
 
-    Returns:
-        A string da seção para o relatório
-    """
+    return reading, nulls
+
+def show_reading(reading: pd.DataFrame) -> None:
+    """Imprime arquivos que falharam, linhas, memória e tempo de leitura."""
+
+    REPORT.title('LEITURA COMPLETA')
 
     # Arquivos em que a leitura falhou
     failures = reading[reading['erro'].notna()]
+
+    REPORT.line(f'Arquivos lidos sem erro: {len(reading) - len(failures)} de {len(reading)}')
+    REPORT.line()
+
+    # Lista os arquivos que falharam, com a mensagem do erro
+    if not failures.empty:
+
+        # Tira a quebra de linha que o pandas coloca no fim da mensagem de erro
+        failures = failures[['categoria', 'arquivo', 'erro']].copy()
+        failures['erro'] = failures['erro'].str.strip()
+
+        REPORT.line('Arquivos que falharam na leitura:')
+        REPORT.table(failures, index=False)
 
     # Totais por categoria. O sum ignora os valores vazios dos arquivos que falharam
     summary = reading.groupby('categoria').agg(
         arquivos=('arquivo', 'count'),
         linhas=('linhas', 'sum'),
+        linhas_vazias=('linhas_vazias', 'sum'),
         memoria=('memoria_mb', 'sum'),
         segundos=('segundos', 'sum'),
     )
@@ -604,129 +541,61 @@ def reading_section(reading:pd.DataFrame) -> str:
     # Guarda os totais gerais antes de formatar a tabela
     total_lines = int(summary.loc['total', 'linhas'])
     total_memory = summary.loc['total', 'memoria']
-    total_seconds = summary.loc['total', 'segundos']
 
     # Formata a tabela para exibição
     summary['arquivos'] = summary['arquivos'].astype(int)
     summary['linhas'] = summary['linhas'].astype(int)
+    summary['linhas_vazias'] = summary['linhas_vazias'].astype(int)
     summary['memoria'] = summary['memoria'].map(utils.format_mb)
-    summary['segundos'] = summary['segundos'].round(1)
+
+    REPORT.line('Totais por categoria (memoria = ocupada pelo pandas depois da leitura):')
+    REPORT.table(summary)
+
+    REPORT.line(f'Total de linhas: {total_lines:,}')
+
+    # Arquivos com linhas em que todos os campos estão vazios
+    with_empty_rows = reading.loc[reading['linhas_vazias'] > 0, ['categoria', 'arquivo', 'linhas_vazias']]
+
+    # Volta a contagem para inteiro (ela vira decimal quando algum arquivo falhou e ficou None)
+    with_empty_rows['linhas_vazias'] = with_empty_rows['linhas_vazias'].astype(int)
+
+    if with_empty_rows.empty:
+
+        REPORT.line('Linhas totalmente vazias: nenhuma')
+
+    else:
+
+        REPORT.line(f'Linhas totalmente vazias: {with_empty_rows["linhas_vazias"].sum():,} nos arquivos:')
+        REPORT.table(with_empty_rows, index=False)
 
     # Quantas vezes o DataFrame é maior que o arquivo em disco
     ratio = reading['memoria_mb'] / reading['tamanho']
 
+    REPORT.line(f'Memória / tamanho em disco: média de {ratio.mean():.1f}x (de {ratio.min():.1f}x a {ratio.max():.1f}x)')
+
     # Arquivo que ocupou mais memória
     largest = reading.loc[reading['memoria_mb'].idxmax()]
 
-    lines = [
-        '## Leitura completa',
-        '',
-        'Cada arquivo foi lido inteiro com a regra de leitura definida no formato físico '
-        "(`sep=';'`, `encoding='utf-8'`, todas as colunas como texto), registrando o número "
-        'de linhas, o tempo de leitura e a memória ocupada pelo DataFrame. O objetivo é '
-        'confirmar que a regra funciona para todos os arquivos e conhecer o tamanho real dos dados.',
-        '',
-    ]
+    REPORT.line(f'Maior arquivo em memória: {largest["categoria"]} / {largest["arquivo"]} ({utils.format_mb(largest["tamanho"])} em disco, {utils.format_mb(largest["memoria_mb"])} em memória)')
 
-    # Resultado da leitura: todos leram ou lista dos que falharam
-    if failures.empty:
-        lines.append(f'Os {len(reading)} arquivos foram lidos sem erro: a regra de leitura funciona para todos.')
-    else:
-        lines.append(f'Arquivos que falharam na leitura: {len(failures)} de {len(reading)}')
-        lines.append('')
+    REPORT.line(f'Histórico inteiro em memória: {utils.format_mb(total_memory)}')
 
-        # Tira a quebra de linha que o pandas coloca no fim da mensagem de erro
-        failures_table = failures[['categoria', 'arquivo', 'erro']].copy()
-        failures_table['erro'] = failures_table['erro'].str.strip()
+def show_columns(nulls: pd.DataFrame, reading: pd.DataFrame) -> None:
+    """Imprime a porcentagem de valores ausentes por coluna."""
 
-        lines.append(failures_table.to_markdown(index=False))
+    REPORT.title('PERFIL DAS COLUNAS')
 
-    lines += [
-        '',
-        '### Tamanho dos dados',
-        '',
-        '`memoria` é a memória que os arquivos ocupam depois de lidos pelo pandas e '
-        '`segundos` é o tempo de leitura. Os totais somam todos os arquivos da categoria.',
-        '',
-        summary.to_markdown(),
-        '',
-        f'- Total de linhas: {total_lines:,}'.replace(',', '.'),
-        f'- Tempo total de leitura: {total_seconds:.1f} segundos',
-        f'- Em memória, cada arquivo ocupa em média {ratio.mean():.1f} vezes o seu tamanho em disco '
-        f'(de {ratio.min():.1f} a {ratio.max():.1f} vezes).',
-        f'- Maior arquivo em memória: `{largest["arquivo"]}` ({largest["categoria"]}), '
-        f'com {utils.format_mb(largest["tamanho"])} em disco e {utils.format_mb(largest["memoria_mb"])} em memória.',
-        '',
-        f'Carregar o histórico inteiro de uma vez ocuparia cerca de {utils.format_mb(total_memory)} de memória, '
-        f'enquanto o maior arquivo sozinho ocupa {utils.format_mb(largest["memoria_mb"])}. Por isso a leitura, '
-        'aqui e no pipeline da Fase 1, é feita um arquivo por vez.',
-        '',
-        'Limitação: uma linha com campos a mais faz a leitura do arquivo falhar, e o arquivo '
-        'apareceria na lista de falhas. Uma linha com campos a menos não gera erro: o pandas '
-        'completa os campos que faltam com nulos. Esses casos aparecem na análise de nulos.',
-    ]
-
-    return '\n'.join(lines)
-
-# endregion
-
-# region Perfil das colunas
-
-def check_nulls(inventory:pd.DataFrame) -> pd.DataFrame:
-    """Conta os valores ausentes de cada coluna, em cada arquivo.
-
-    Args:
-        inventory: Inventário de arquivos
-
-    Returns:
-        DataFrame com uma linha por arquivo. Colunas:
-            'categoria': Categoria do arquivo.
-            'arquivo': Nome do arquivo.
-            Uma coluna para cada coluna do CSV, com a quantidade de valores ausentes.
-    """
-
-    rows = []
-
-    # Total de arquivos, para mostrar o progresso
-    total = len(inventory)
-
-    for number, row in enumerate(inventory.itertuples(), start=1):
-
-        print(f'    [{number}/{total}] {row.categoria} / {row.arquivo}')
-
-        # Ausentes do arquivo, como dicionário: nome da coluna do CSV -> quantidade
-        nulls = utils.count_nulls(row.caminho).to_dict()
-
-        # Identifica de qual categoria e arquivo vieram as contagens
-        nulls['categoria'] = row.categoria
-        nulls['arquivo'] = row.arquivo
-
-        rows.append(nulls)
-
-    return pd.DataFrame(rows)
-
-def nulls_section(nulls:pd.DataFrame, reading:pd.DataFrame) -> str:
-    """Monta a seção do perfil das colunas no relatório.
-
-    Mostra a porcentagem de valores ausentes de cada coluna do CSV,
-    por categoria e no histórico inteiro.
-
-    Args:
-        nulls: DataFrame gerado por check_nulls
-        reading: DataFrame gerado por check_reading, de onde vem o total de linhas
-
-    Returns:
-        A string da seção para o relatório
-    """
-
-    # Colunas do CSV: todas, menos as que identificam o arquivo
-    csv_columns = nulls.columns.drop(['categoria', 'arquivo'])
+    # Colunas do CSV: todas, menos a que identifica a categoria
+    csv_columns = nulls.columns.drop('categoria')
 
     # Ausentes por categoria: uma linha por categoria, uma coluna por coluna do CSV
     nulls_by_category = nulls.groupby('categoria')[csv_columns].sum()
 
-    # Total de linhas de cada categoria, medido na leitura completa
+    # Total de linhas de cada categoria, medido na leitura
     rows_by_category = reading.groupby('categoria')['linhas'].sum()
+
+    # Só as categorias que têm contagem de nulos (uma categoria em que todos os arquivos falharam fica de fora)
+    rows_by_category = rows_by_category.loc[nulls_by_category.index]
 
     # Porcentagem de ausentes. axis=0 divide cada linha (categoria) pelo total de linhas dela
     percent = nulls_by_category.div(rows_by_category, axis=0) * 100
@@ -738,133 +607,43 @@ def nulls_section(nulls:pd.DataFrame, reading:pd.DataFrame) -> str:
     # Porcentagem no histórico inteiro, somando todas as categorias
     percent['total'] = nulls_by_category.sum() / rows_by_category.sum() * 100
 
+    REPORT.line('Porcentagem de valores ausentes (campo vazio ou só com espaços), por categoria e no total:')
+    REPORT.table(percent)
+
     # Colunas quase sempre preenchidas e colunas vazias em mais da metade das linhas
-    almost_filled = [f'`{name}`' for name in percent.index[percent['total'] < 1]]
-    mostly_empty = [f'`{name}`' for name in percent.index[percent['total'] > 50]]
+    almost_filled = percent.index[percent['total'] < 1]
+    mostly_empty = percent.index[percent['total'] > 50]
 
-    # Tabela de decisões, na mesma ordem das colunas do CSV
-    decision_rows = []
-    for name in percent.index:
+    REPORT.line(f'Menos de 1% ausente: {", ".join(almost_filled) or "nenhuma"}')
+    REPORT.line()
+    REPORT.line(f'Mais de 50% ausente: {", ".join(mostly_empty) or "nenhuma"}')
 
-        # Coluna que não está em COLUMN_DECISIONS aparece como pendente
-        decision, reason = COLUMN_DECISIONS.get(name, ('sem decisão', ''))
-
-        decision_rows.append({'coluna': name, 'decisao': decision, 'motivo': reason})
-
-    decisions = pd.DataFrame(decision_rows)
-
-    # Colunas que o pipeline vai ler
-    kept = [f'`{name}`' for name in decisions.loc[decisions['decisao'] == 'fica', 'coluna']]
-
-    lines = [
-        '## Perfil das colunas',
-        '',
-        'Para cada coluna, foi contada a quantidade de valores ausentes em todos os arquivos. '
-        'Conta como ausente o campo vazio e o campo que só tem espaços: o pandas reconhece '
-        'só o primeiro como nulo, então o segundo foi contado à parte. O objetivo é decidir '
-        'quais colunas o pipeline da Fase 1 vai usar.',
-        '',
-        'Os valores são a porcentagem de linhas sem valor, por categoria e no histórico inteiro (`total`).',
-        '',
-        percent.to_markdown(floatfmt='.1f'),
-        '',
-        f'- Colunas quase sempre preenchidas (menos de 1% ausente): {", ".join(almost_filled) or "nenhuma"}',
-        f'- Colunas vazias em mais da metade das linhas: {", ".join(mostly_empty) or "nenhuma"}',
-        '',
-        'Limitação: a porcentagem do histórico inteiro pode esconder uma coluna que só passou '
-        'a ser preenchida a partir de certo ano. A divisão por categoria mostra parte disso, '
-        'porque as categorias mensais só existem a partir de 2023.',
-        '',
-        '### Decisão por coluna',
-        '',
-        'Cada coluna foi avaliada por dois critérios: se está vazia na maior parte das linhas '
-        'e se tem uso nas consultas do projeto. O endereço não é usado nessas consultas, mas fica '
-        'porque é um dado do posto, que vai para uma tabela própria no banco.',
-        '',
-        decisions.to_markdown(index=False),
-        '',
-        f'O pipeline da Fase 1 vai ler {len(kept)} das {len(decisions)} colunas: {", ".join(kept)}.',
-    ]
-
-    return '\n'.join(lines)
-
-# endregion
-
-# region Relatório
-
-def header_section() -> str:
-    """Monta a seção de cabeçalho do relatório de resultados."""
-
-    lines = [
-        '# Exploração dos dados brutos da ANP',
-        '',
-        'Relatório gerado por `explorer.py` a partir dos arquivos em `raw/`, '
-        'baixados pelo coletor da série histórica de preços de combustíveis da ANP.',
-        '',
-        'O objetivo da exploração é entender a fonte antes de escrever o pipeline: '
-        'o que existe, em que formato e com que qualidade. ',
-        '',
-        'Para gerar o relatório novamente: `python explorer.py`.',
-    ]
-
-    return '\n'.join(lines)
-
-def write_report(sections:list[str], path:Path) -> None:
-    """Junta as seções e escreve o relatório em markdown.
-       
-    Args:
-        sections: Seções do relatório, já em markdown, 
-        na ordem em que devem aparecer
-        path: Arquivo de saída. É sobrescrito se já existir
-    """
-
-    # Junta as seções, com uma linha em branco de espaço entre elas
-    report = '\n\n'.join(sections)
-
-    # Escreve o arquivo
-    path.write_text(report, encoding='utf-8')
-    
 # endregion
 
 # region Função principal
 
 def main():
-    print('Montando o inventário...')
-    inventory = build_inventory('raw')
-    print(f'    {len(inventory)} arquivos encontrados')
 
-    print('Verificando lacunas...')
-    gaps = identify_gaps(inventory)
+    # Lista os arquivos e o período que cada um cobre
+    inventory = build_inventory(RAW_PATH)
 
-    print('Verificando os nomes dos arquivos...')
-    name_inconsistencies = find_names_inconsistencies(inventory)
+    # Arquivos, períodos, lacunas e nomes
+    show_inventory(inventory)
 
-    print('Detectando os delimitadores...')
-    delimiters = check_delimiter(inventory)
+    # Delimitadores e cabeçalhos
+    show_format(inventory)
 
-    print('Lendo os cabeçalhos...')
-    headers = check_headers(inventory)
+    # Lê cada arquivo uma vez
+    reading, nulls = profile_files(inventory)
 
-    print('Lendo todos os arquivos inteiros...')
-    reading = check_reading(inventory)
+    # Linhas, memória, tempo e falhas de leitura
+    show_reading(reading)
 
-    print('Contando os valores ausentes de cada coluna...')
-    nulls = check_nulls(inventory)
+    # Valores ausentes por coluna
+    show_columns(nulls, reading)
 
-    print('Montando o relatório...')
-    sections = [
-        header_section(),
-        inventory_section(inventory),
-        gaps_section(gaps),
-        names_section(name_inconsistencies),
-        delimiter_section(delimiters),
-        archive_header_section(headers),
-        reading_section(reading),
-        nulls_section(nulls, reading),
-    ]
-
-    write_report(sections, path=REPORT_PATH)
-    print(f'Relatório salvo em {REPORT_PATH}')
+    # Salva o resultado da exploração em markdown
+    REPORT.save(REPORT_PATH)
 
 # endregion
 
