@@ -77,11 +77,11 @@ Totais por categoria (memoria = ocupada pelo pandas depois da leitura):
 
 | categoria                        |   arquivos |   linhas |   linhas_vazias | memoria   |   segundos |
 |:---------------------------------|-----------:|---------:|----------------:|:----------|-----------:|
-| Combustíveis automotivos         |         45 | 25464380 |            9114 | 21.85 GB  |       65.9 |
+| Combustíveis automotivos         |         45 | 25464380 |            9114 | 21.85 GB  |       57.2 |
 | Etanol Hidratado + Gasolina C    |         46 |  2269530 |               0 | 1.92 GB   |        5.9 |
-| GLP P13                          |         45 |  6345989 |               0 | 5.37 GB   |       28.8 |
-| Óleo Diesel (S-500 e S-10) + GNV |         46 |  1054801 |            1477 | 914.00 MB |        3.4 |
-| total                            |        182 | 35134700 |           10591 | 30.04 GB  |      104.1 |
+| GLP P13                          |         45 |  6345989 |               0 | 5.37 GB   |       16.7 |
+| Óleo Diesel (S-500 e S-10) + GNV |         46 |  1054801 |            1477 | 914.00 MB |        5.0 |
+| total                            |        182 | 35134700 |           10591 | 30.04 GB  |       84.8 |
 
 Total de linhas: 35,134,700
 
@@ -124,3 +124,15 @@ Porcentagem de valores ausentes (campo vazio ou só com espaços), por categoria
 Menos de 1% ausente: Regiao - Sigla, Estado - Sigla, Municipio, Revenda, CNPJ da Revenda, Nome da Rua, Numero Rua, Bairro, Cep, Produto, Data da Coleta, Valor de Venda, Unidade de Medida, Bandeira
 
 Mais de 50% ausente: Complemento, Valor de Compra
+
+## ================================ DATA DA COLETA ================================
+
+Formatos encontrados (cada dígito trocado por 9):
+
+| desenho    |   linhas |   arquivos | primeiro   | ultimo   |
+|:-----------|---------:|-----------:|:-----------|:---------|
+| 99/99/9999 | 35124109 |         92 | 2004-01    | 2026-10  |
+
+Arquivos com mais de um formato: nenhum
+
+Datas que falham na conversão com '%d/%m/%Y': 0

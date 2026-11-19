@@ -416,14 +416,14 @@ def show_format(inventory: pd.DataFrame) -> None:
 
 # region Leitura de todos os arquivos
 
-def profile_files(inventory: pd.DataFrame) -> tuple[pd.DataFrame, pd.DataFrame]:
+def profile_files(inventory: pd.DataFrame) -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
     """Lê cada arquivo uma vez e junta as medições de todos.
 
     Args:
         inventory: Inventário de arquivos
 
     Returns:
-        Tupla com dois DataFrames, ambos com uma linha por arquivo:
+        Tupla com três DataFrames:
 
             reading: Medições da leitura. Colunas:
                 'categoria': Nome da subpasta onde o arquivo está
@@ -433,12 +433,19 @@ def profile_files(inventory: pd.DataFrame) -> tuple[pd.DataFrame, pd.DataFrame]:
                 'linhas_vazias': Quantidade de linhas com todos os campos ausentes
                 'segundos': Tempo de leitura do arquivo
                 'memoria_mb': Memória ocupada pelo DataFrame do arquivo, em MB
+                'falhas_datas': Datas que não convertem com '%d/%m/%Y'
                 'erro': Mensagem do erro, se a leitura falhou, ou None
-                As medições de um arquivo que falhou ficam vazias.
+                Uma linha por arquivo. As medições de um arquivo que falhou ficam vazias.
 
-        nulls: Valores ausentes. Colunas:
+        nulls: Valores ausentes, uma linha por arquivo. Colunas:
             'categoria': Nome da subpasta onde o arquivo está
             Uma coluna para cada coluna do CSV, com a quantidade de valores ausentes.
+            Arquivos que falharam ficam de fora.
+
+        dates: Formatos da Data da Coleta, uma linha por arquivo e formato. Colunas:
+            'categoria', 'arquivo', 'inicio': Identificação do arquivo
+            'desenho': Formato da data, com cada dígito trocado por 9
+            'linhas': Quantidade de linhas com esse formato
             Arquivos que falharam ficam de fora.
     """
 
@@ -449,6 +456,9 @@ def profile_files(inventory: pd.DataFrame) -> tuple[pd.DataFrame, pd.DataFrame]:
     # Medições de leitura e contagens de nulos, uma linha por arquivo
     reading_rows = []
     nulls_rows = []
+
+    # Formatos de data, uma linha por arquivo e formato
+    dates_rows = []
 
     # Total de arquivos, para mostrar o progresso
     total = len(inventory)
@@ -487,6 +497,25 @@ def profile_files(inventory: pd.DataFrame) -> tuple[pd.DataFrame, pd.DataFrame]:
 
             nulls_rows.append(nulls)
 
+        # Tira os formatos de data do dicionário, porque eles vão para outro DataFrame
+        dates = profile.pop('datas')
+
+        # Arquivo que falhou não tem formatos de data
+        if dates is not None:
+
+            # Cada formato do arquivo vira uma linha
+            for shape, count in dates.items():
+
+                dates_rows.append(
+                    {
+                        'categoria' : row.categoria,
+                        'arquivo' : row.arquivo,
+                        'inicio' : row.inicio,
+                        'desenho' : shape,
+                        'linhas' : count,
+                    }
+                )
+
     # Monta os DataFrames, com as colunas de identificação primeiro
     reading = pd.DataFrame(
         reading_rows,
@@ -498,12 +527,14 @@ def profile_files(inventory: pd.DataFrame) -> tuple[pd.DataFrame, pd.DataFrame]:
             'linhas_vazias',
             'segundos',
             'memoria_mb',
+            'falhas_datas',
             'erro'
             ]
         )
     nulls = pd.DataFrame(nulls_rows)
+    dates = pd.DataFrame(dates_rows)
 
-    return reading, nulls
+    return reading, nulls, dates
 
 def show_reading(reading: pd.DataFrame) -> None:
     """Imprime arquivos que falharam, linhas, memória e tempo de leitura."""
@@ -618,6 +649,47 @@ def show_columns(nulls: pd.DataFrame, reading: pd.DataFrame) -> None:
     REPORT.line()
     REPORT.line(f'Mais de 50% ausente: {", ".join(mostly_empty) or "nenhuma"}')
 
+def show_dates(dates: pd.DataFrame, reading: pd.DataFrame) -> None:
+    """Imprime os formatos da Data da Coleta e quantas datas falham na conversão."""
+
+    REPORT.title('DATA DA COLETA')
+
+    # Agrupa as linhas de todos os arquivos pelo formato, como foi feito com os cabeçalhos
+    patterns = dates.groupby('desenho').agg(
+        linhas=('linhas', 'sum'),
+        arquivos=('arquivo', 'nunique'),
+        primeiro=('inicio', 'min'),
+        ultimo=('inicio', 'max'),
+    )
+
+    # Formata as datas para exibição
+    patterns['primeiro'] = patterns['primeiro'].dt.strftime('%Y-%m')
+    patterns['ultimo'] = patterns['ultimo'].dt.strftime('%Y-%m')
+
+    REPORT.line('Formatos encontrados (cada dígito trocado por 9):')
+    REPORT.table(patterns)
+
+    # Quantos formatos diferentes cada arquivo tem
+    per_file = dates.groupby(['categoria', 'arquivo'])['desenho'].nunique()
+
+    # Só os arquivos com mais de um formato
+    mixed = per_file[per_file > 1]
+
+    if mixed.empty:
+
+        REPORT.line('Arquivos com mais de um formato: nenhum')
+        REPORT.line()
+
+    else:
+
+        REPORT.line('Arquivos com mais de um formato:')
+        REPORT.table(mixed.reset_index(name='formatos'), index=False)
+
+    # Total de datas que não convertem com dia/mês/ano. O sum ignora os arquivos que falharam na leitura
+    failures = int(reading['falhas_datas'].sum())
+
+    REPORT.line(f"Datas que falham na conversão com '%d/%m/%Y': {failures:,}")
+
 # endregion
 
 # region Função principal
@@ -634,13 +706,16 @@ def main():
     show_format(inventory)
 
     # Lê cada arquivo uma vez
-    reading, nulls = profile_files(inventory)
+    reading, nulls, dates = profile_files(inventory)
 
     # Linhas, memória, tempo e falhas de leitura
     show_reading(reading)
 
     # Valores ausentes por coluna
     show_columns(nulls, reading)
+
+    # Formatos da Data da Coleta
+    show_dates(dates, reading)
 
     # Salva o resultado da exploração em markdown
     REPORT.save(REPORT_PATH)

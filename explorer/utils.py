@@ -1,5 +1,7 @@
 """Funções auxiliares genéricas"""
 
+# region Imports
+
 # Biblioteca padrão
 import csv
 import time
@@ -8,6 +10,7 @@ from pathlib import Path
 # Biblioteca de terceiros
 import pandas as pd
 
+# endregion
 
 # region Impressão
 
@@ -140,6 +143,45 @@ def read_header(path) -> tuple[str, ...]:
         # Retorna uma tupla contendo apenas a primeira linha. Cada item é o cabeçalho de uma coluna
         return tuple(next(reader))
 
+def find_date_shapes(column:pd.Series) -> dict:
+    """Conta os formatos de data de uma coluna, sem supor nenhum formato.
+
+    Troca cada dígito por 9, então datas escritas do mesmo jeito ficam iguais.
+    Campos vazios ficam de fora porque já foram contados como nulos.
+
+    Args:
+        column: Coluna de datas, como texto.
+
+    Returns:
+        Dict com os formatos encontrados e a quantidade de linhas.
+    """
+
+    # Troca cada dígito por 9, o que sobra é o desenho do formato
+    shapes = column.str.replace(pat=r'\d', repl='9', regex=True)
+
+    # Conta as linhas de cada desenho e transforma em dicionário
+    return shapes.value_counts().to_dict()
+
+def count_date_failures(column: pd.Series, date_format: str) -> int:
+    """Conta as datas que não convertem com o formato informado.
+
+    Falha é o campo preenchido que vira NaT na conversão. Campo vazio
+    também vira NaT, mas não conta, porque já foi contado como nulo.
+
+    Args:
+        column: Coluna de datas, como texto.
+        date_format: Formato usado na conversão, como '%d/%m/%Y'.
+
+    Returns:
+        Quantidade de linhas que falharam.
+    """
+
+    # Converte para data. O que não seguir o formato vira NaT
+    dates = pd.to_datetime(column, format=date_format, errors='coerce')
+
+    # Falha: o texto estava preenchido e mesmo assim virou NaT
+    return int((column.notna() & dates.isna()).sum())
+
 def profile_file(path) -> dict:
     """Lê um arquivo uma vez e devolve tudo o que a exploração mede nele.
 
@@ -160,6 +202,8 @@ def profile_file(path) -> dict:
             'linhas': Quantidade de linhas do arquivo, sem o cabeçalho. \n
             'linhas_vazias': Quantidade de linhas com todos os campos ausentes. \n
             'nulos': Dict com o nome de cada coluna e a quantidade de valores ausentes. \n
+            'datas': Dict com cada formato da Data da Coleta e a quantidade de linhas. \n
+            'falhas_datas': Quantidade de datas que não convertem com '%d/%m/%Y'. \n
             'erro': Mensagem do erro, se a leitura falhar, ou None. \n
 
         Se a leitura falhar (ParserError ou UnicodeDecodeError), todas as
@@ -177,8 +221,7 @@ def profile_file(path) -> dict:
     # Se o arquivo não puder ser lido, devolve só a mensagem do erro
     except (pd.errors.ParserError, UnicodeDecodeError) as e:
 
-        return {'segundos': None, 'memoria_mb': None, 'linhas': None,
-                'linhas_vazias': None, 'nulos': None, 'erro': str(e)}
+        return {'segundos': None, 'memoria_mb': None, 'linhas': None, 'linhas_vazias': None, 'nulos': None, 'datas' : None, 'falhas_datas' : None, 'erro': str(e)}
 
     # Diferença entre o contador do final da leitura e o contador do começo
     seconds = time.perf_counter() - start
@@ -204,7 +247,12 @@ def profile_file(path) -> dict:
     # Linhas em que todos os campos estão ausentes. all(axis=1) olha a linha inteira
     empty_rows = int(missing.all(axis=1).sum())
 
-    return {'segundos': seconds, 'memoria_mb': memory_mb, 'linhas': rows,
-            'linhas_vazias': empty_rows, 'nulos': nulls, 'erro': None}
+    # Formatos de data encontrados no arquivo.
+    date_shapes = find_date_shapes(df['Data da Coleta'])
+
+    # Datas que não convertem com o formato dia/mês/ano, o único encontrado na exploração
+    date_failures = count_date_failures(df['Data da Coleta'], '%d/%m/%Y')
+
+    return {'segundos': seconds, 'memoria_mb': memory_mb, 'linhas': rows, 'linhas_vazias': empty_rows, 'nulos': nulls, 'datas' : date_shapes, 'falhas_datas' : date_failures, 'erro': None}
 
 # endregion
