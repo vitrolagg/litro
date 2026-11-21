@@ -143,14 +143,14 @@ def read_header(path) -> tuple[str, ...]:
         # Retorna uma tupla contendo apenas a primeira linha. Cada item é o cabeçalho de uma coluna
         return tuple(next(reader))
 
-def find_date_shapes(column:pd.Series) -> dict:
-    """Conta os formatos de data de uma coluna, sem supor nenhum formato.
+def find_shapes(column:pd.Series) -> dict:
+    """Conta os formatos de texto de uma coluna, sem supor nenhum formato.
 
-    Troca cada dígito por 9, então datas escritas do mesmo jeito ficam iguais.
+    Troca cada dígito por 9, então dados escritos do mesmo jeito ficam iguais.
     Campos vazios ficam de fora porque já foram contados como nulos.
 
     Args:
-        column: Coluna de datas, como texto.
+        column: Coluna com os valores, como str.
 
     Returns:
         Dict com os formatos encontrados e a quantidade de linhas.
@@ -182,6 +182,30 @@ def count_date_failures(column: pd.Series, date_format: str) -> int:
     # Falha: o texto estava preenchido e mesmo assim virou NaT
     return int((column.notna() & dates.isna()).sum())
 
+def count_number_failures(column: pd.Series) -> int:
+    """Conta os valores que não convertem para número com vírgula decimal.
+
+    A vírgula é trocada por ponto antes da conversão, porque o pandas só
+    entende o ponto como separador decimal. Falha é o campo preenchido que
+    vira NaN na conversão. Campo vazio também vira NaN, mas não conta,
+    porque já foi contado como nulo.
+
+    Args:
+        column: Coluna de números, como texto.
+
+    Returns:
+        Quantidade de linhas que falharam.
+    """
+
+    # Troca a vírgula decimal por ponto. regex=False: a vírgula é procurada como texto literal
+    dotted = column.str.replace(',', '.', regex=False)
+
+    # Converte para número. O que não for número vira NaN
+    numbers = pd.to_numeric(dotted, errors='coerce')
+
+    # Falha: o texto estava preenchido e mesmo assim virou NaN
+    return int((column.notna() & numbers.isna()).sum())
+
 def profile_file(path) -> dict:
     """Lê um arquivo uma vez e devolve tudo o que a exploração mede nele.
 
@@ -203,7 +227,9 @@ def profile_file(path) -> dict:
             'linhas_vazias': Quantidade de linhas com todos os campos ausentes. \n
             'nulos': Dict com o nome de cada coluna e a quantidade de valores ausentes. \n
             'datas': Dict com cada formato da Data da Coleta e a quantidade de linhas. \n
-            'falhas_datas': Quantidade de datas que não convertem com '%d/%m/%Y'. \n
+            'datas_falhas': Quantidade de datas que não convertem com '%d/%m/%Y'. \n
+            'venda': Dict com cada formato do Valor de Venda e a quantidade de linhas. \n
+            'venda_falhas': Quantidade de valores de venda que não convertem para número. \n
             'erro': Mensagem do erro, se a leitura falhar, ou None. \n
 
         Se a leitura falhar (ParserError ou UnicodeDecodeError), todas as
@@ -221,7 +247,18 @@ def profile_file(path) -> dict:
     # Se o arquivo não puder ser lido, devolve só a mensagem do erro
     except (pd.errors.ParserError, UnicodeDecodeError) as e:
 
-        return {'segundos': None, 'memoria_mb': None, 'linhas': None, 'linhas_vazias': None, 'nulos': None, 'datas' : None, 'falhas_datas' : None, 'erro': str(e)}
+        return {
+            'segundos': None, 
+            'memoria_mb': None, 
+            'linhas': None, 
+            'linhas_vazias': None, 
+            'nulos': None, 
+            'datas' : None, 
+            'datas_falhas' : None, 
+            'venda' : None,
+            'venda_falhas' : None,
+            'erro': str(e)
+            }
 
     # Diferença entre o contador do final da leitura e o contador do começo
     seconds = time.perf_counter() - start
@@ -248,11 +285,28 @@ def profile_file(path) -> dict:
     empty_rows = int(missing.all(axis=1).sum())
 
     # Formatos de data encontrados no arquivo.
-    date_shapes = find_date_shapes(df['Data da Coleta'])
+    date_shapes = find_shapes(df['Data da Coleta'])
+
+    # Formatos de valor (moeda) encontrados no valor de venda
+    sale_value_shapes = find_shapes(df['Valor de Venda'])
 
     # Datas que não convertem com o formato dia/mês/ano, o único encontrado na exploração
     date_failures = count_date_failures(df['Data da Coleta'], '%d/%m/%Y')
 
-    return {'segundos': seconds, 'memoria_mb': memory_mb, 'linhas': rows, 'linhas_vazias': empty_rows, 'nulos': nulls, 'datas' : date_shapes, 'falhas_datas' : date_failures, 'erro': None}
+    # Valores de venda que não convertem para número, trocando a vírgula decimal por ponto
+    sale_value_failures = count_number_failures(df['Valor de Venda'])
+
+    return {
+        'segundos': seconds, 
+        'memoria_mb': memory_mb, 
+        'linhas': rows, 
+        'linhas_vazias': empty_rows, 
+        'nulos': nulls, 
+        'datas' : date_shapes, 
+        'datas_falhas' : date_failures, 
+        'venda' : sale_value_shapes,
+        'venda_falhas' : sale_value_failures,
+        'erro': None
+        }
 
 # endregion

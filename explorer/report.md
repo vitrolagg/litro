@@ -77,11 +77,11 @@ Totais por categoria (memoria = ocupada pelo pandas depois da leitura):
 
 | categoria                        |   arquivos |   linhas |   linhas_vazias | memoria   |   segundos |
 |:---------------------------------|-----------:|---------:|----------------:|:----------|-----------:|
-| Combustíveis automotivos         |         45 | 25464380 |            9114 | 21.85 GB  |       57.2 |
-| Etanol Hidratado + Gasolina C    |         46 |  2269530 |               0 | 1.92 GB   |        5.9 |
-| GLP P13                          |         45 |  6345989 |               0 | 5.37 GB   |       16.7 |
-| Óleo Diesel (S-500 e S-10) + GNV |         46 |  1054801 |            1477 | 914.00 MB |        5.0 |
-| total                            |        182 | 35134700 |           10591 | 30.04 GB  |       84.8 |
+| Combustíveis automotivos         |         45 | 25464380 |            9114 | 21.85 GB  |       62.3 |
+| Etanol Hidratado + Gasolina C    |         46 |  2269530 |               0 | 1.92 GB   |        8.9 |
+| GLP P13                          |         45 |  6345989 |               0 | 5.37 GB   |       17.1 |
+| Óleo Diesel (S-500 e S-10) + GNV |         46 |  1054801 |            1477 | 914.00 MB |        2.8 |
+| total                            |        182 | 35134700 |           10591 | 30.04 GB  |       91.1 |
 
 Total de linhas: 35,134,700
 
@@ -136,3 +136,24 @@ Formatos encontrados (cada dígito trocado por 9):
 Arquivos com mais de um formato: nenhum
 
 Datas que falham na conversão com '%d/%m/%Y': 0
+
+## ================================ VALOR DE VENDA ================================
+
+Formatos encontrados (cada dígito trocado por 9):
+
+| desenho   |   linhas |   arquivos | primeiro   | ultimo   |
+|:----------|---------:|-----------:|:-----------|:---------|
+| 9,99      | 16190239 |         91 | 2004-01    | 2026-10  |
+| 9,999     | 11864137 |         37 | 2004-01    | 2022-07  |
+| 99        |  5279839 |         43 | 2004-01    | 2025-07  |
+| 9,9       |   673561 |         63 | 2004-01    | 2025-07  |
+| 999       |   456480 |         17 | 2017-01    | 2025-07  |
+| 99,99     |   234097 |         45 | 2004-01    | 2026-01  |
+| 99,9      |   231615 |         43 | 2004-01    | 2025-07  |
+| 999,99    |   129025 |         14 | 2018-01    | 2026-01  |
+| 9         |    50169 |         63 | 2004-01    | 2025-07  |
+| 999,9     |    14365 |         11 | 2018-07    | 2025-07  |
+| 99,999    |      568 |         17 | 2005-07    | 2021-01  |
+| 9,9999    |       14 |          4 | 2004-01    | 2005-07  |
+
+Valores que falham na conversão para número (vírgula trocada por ponto): 0

@@ -416,14 +416,14 @@ def show_format(inventory: pd.DataFrame) -> None:
 
 # region Leitura de todos os arquivos
 
-def profile_files(inventory: pd.DataFrame) -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
+def profile_files(inventory: pd.DataFrame) -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame, pd.DataFrame]:
     """Lê cada arquivo uma vez e junta as medições de todos.
 
     Args:
         inventory: Inventário de arquivos
 
     Returns:
-        Tupla com três DataFrames:
+        Tupla com quatro DataFrames:
 
             reading: Medições da leitura. Colunas:
                 'categoria': Nome da subpasta onde o arquivo está
@@ -433,7 +433,8 @@ def profile_files(inventory: pd.DataFrame) -> tuple[pd.DataFrame, pd.DataFrame, 
                 'linhas_vazias': Quantidade de linhas com todos os campos ausentes
                 'segundos': Tempo de leitura do arquivo
                 'memoria_mb': Memória ocupada pelo DataFrame do arquivo, em MB
-                'falhas_datas': Datas que não convertem com '%d/%m/%Y'
+                'datas_falhas': Datas que não convertem com '%d/%m/%Y'
+                'venda_falhas': Valores de venda que não convertem para número
                 'erro': Mensagem do erro, se a leitura falhou, ou None
                 Uma linha por arquivo. As medições de um arquivo que falhou ficam vazias.
 
@@ -445,6 +446,12 @@ def profile_files(inventory: pd.DataFrame) -> tuple[pd.DataFrame, pd.DataFrame, 
         dates: Formatos da Data da Coleta, uma linha por arquivo e formato. Colunas:
             'categoria', 'arquivo', 'inicio': Identificação do arquivo
             'desenho': Formato da data, com cada dígito trocado por 9
+            'linhas': Quantidade de linhas com esse formato
+            Arquivos que falharam ficam de fora.
+
+        sales: Formatos do Valor de Venda, uma linha por arquivo e formato. Colunas:
+            'categoria', 'arquivo', 'inicio': Identificação do arquivo
+            'desenho': Formato do valor de venda, com cada dígito trocado por 9
             'linhas': Quantidade de linhas com esse formato
             Arquivos que falharam ficam de fora.
     """
@@ -459,6 +466,9 @@ def profile_files(inventory: pd.DataFrame) -> tuple[pd.DataFrame, pd.DataFrame, 
 
     # Formatos de data, uma linha por arquivo e formato
     dates_rows = []
+
+    # Formatos de valor de venda, uma linha por arquivo e formato.
+    sales_rows = []
 
     # Total de arquivos, para mostrar o progresso
     total = len(inventory)
@@ -516,6 +526,25 @@ def profile_files(inventory: pd.DataFrame) -> tuple[pd.DataFrame, pd.DataFrame, 
                     }
                 )
 
+        # Tira os formatos de venda do dicionário, porque eles vão para outro DataFrame
+        sales = profile.pop('venda')
+
+        # Arquivo que falhou não tem formatos de venda
+        if sales is not None:
+
+            # Cada formato do arquivo vira uma linha
+            for shape, count in sales.items():
+
+                sales_rows.append(
+                    {
+                        'categoria' : row.categoria,
+                        'arquivo' : row.arquivo,
+                        'inicio' : row.inicio,
+                        'desenho' : shape,
+                        'linhas' : count,
+                    }
+                )
+
     # Monta os DataFrames, com as colunas de identificação primeiro
     reading = pd.DataFrame(
         reading_rows,
@@ -527,14 +556,16 @@ def profile_files(inventory: pd.DataFrame) -> tuple[pd.DataFrame, pd.DataFrame, 
             'linhas_vazias',
             'segundos',
             'memoria_mb',
-            'falhas_datas',
+            'datas_falhas',
+            'venda_falhas',
             'erro'
             ]
         )
     nulls = pd.DataFrame(nulls_rows)
     dates = pd.DataFrame(dates_rows)
+    sales = pd.DataFrame(sales_rows)
 
-    return reading, nulls, dates
+    return reading, nulls, dates, sales
 
 def show_reading(reading: pd.DataFrame) -> None:
     """Imprime arquivos que falharam, linhas, memória e tempo de leitura."""
@@ -686,9 +717,37 @@ def show_dates(dates: pd.DataFrame, reading: pd.DataFrame) -> None:
         REPORT.table(mixed.reset_index(name='formatos'), index=False)
 
     # Total de datas que não convertem com dia/mês/ano. O sum ignora os arquivos que falharam na leitura
-    failures = int(reading['falhas_datas'].sum())
+    failures = int(reading['datas_falhas'].sum())
 
     REPORT.line(f"Datas que falham na conversão com '%d/%m/%Y': {failures:,}")
+
+def show_sales(sales:pd.DataFrame, reading: pd.DataFrame) -> None:
+    """Imprime os formatos do Valor de Venda e quantos valores falham na conversão para número."""
+
+    REPORT.title("VALOR DE VENDA")
+
+    # Agrupa as linhas de todos os arquivos pelo formato, como foi feito com os cabeçalhos
+    patterns = sales.groupby('desenho').agg(
+        linhas=('linhas', 'sum'),
+        arquivos=('arquivo', 'nunique'),
+        primeiro=('inicio', 'min'),
+        ultimo=('inicio', 'max'),
+    )
+
+    # Do formato mais comum para o menos comum: os casos raros ficam no fim
+    patterns = patterns.sort_values('linhas', ascending=False)
+
+    # Formata as datas para exibição
+    patterns['primeiro'] = patterns['primeiro'].dt.strftime('%Y-%m')
+    patterns['ultimo'] = patterns['ultimo'].dt.strftime('%Y-%m')
+
+    REPORT.line('Formatos encontrados (cada dígito trocado por 9):')
+    REPORT.table(patterns)
+
+    # Total de valores que não convertem para número. O sum ignora os arquivos que falharam na leitura
+    failures = int(reading['venda_falhas'].sum())
+
+    REPORT.line(f"Valores que falham na conversão para número (vírgula trocada por ponto): {failures:,}")
 
 # endregion
 
@@ -706,7 +765,7 @@ def main():
     show_format(inventory)
 
     # Lê cada arquivo uma vez
-    reading, nulls, dates = profile_files(inventory)
+    reading, nulls, dates, sales = profile_files(inventory)
 
     # Linhas, memória, tempo e falhas de leitura
     show_reading(reading)
@@ -716,6 +775,9 @@ def main():
 
     # Formatos da Data da Coleta
     show_dates(dates, reading)
+
+    # Formatos de valor de venda
+    show_sales(sales, reading)
 
     # Salva o resultado da exploração em markdown
     REPORT.save(REPORT_PATH)
